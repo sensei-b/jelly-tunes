@@ -5,6 +5,7 @@ import {
   PanelSection,
   PanelSectionRow,
   TextField,
+  ToggleField,
   staticClasses,
 } from "@decky/ui";
 import {
@@ -42,6 +43,7 @@ interface JellySettings {
   server_url: string;
   api_key: string;
   user_id: string;
+  skip_ssl_verify: boolean;
 }
 
 type View = "artists" | "albums" | "tracks" | "settings";
@@ -51,7 +53,7 @@ type RepeatMode = "off" | "all" | "one";
 
 const getSettings = callable<[], JellySettings>("get_settings");
 const saveSettingsCall = callable<
-  [server_url: string, api_key: string, user_id: string],
+  [server_url: string, api_key: string, user_id: string, skip_ssl_verify: boolean],
   boolean
 >("save_settings");
 const getArtists = callable<[], ItemsResult>("get_artists");
@@ -151,6 +153,7 @@ function Content() {
   const [serverUrl, setServerUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [userId, setUserId] = useState("");
+  const [skipSslVerify, setSkipSslVerify] = useState(false);
   const [saving, setSaving] = useState(false);
   const [configured, setConfigured] = useState(false);
 
@@ -161,6 +164,7 @@ function Content() {
       setServerUrl(cfg.server_url);
       setApiKey(cfg.api_key);
       setUserId(cfg.user_id);
+      setSkipSslVerify(cfg.skip_ssl_verify ?? false);
 
       const ready = !!(cfg.server_url && cfg.api_key && cfg.user_id);
       setConfigured(ready);
@@ -372,7 +376,7 @@ function Content() {
   // -- Settings ---------------------------------------------------
   const handleSaveSettings = async () => {
     setSaving(true);
-    await saveSettingsCall(serverUrl, apiKey, userId);
+    await saveSettingsCall(serverUrl, apiKey, userId, skipSslVerify);
     setSaving(false);
     setConfigured(true);
     setView("artists");
@@ -471,6 +475,14 @@ function Content() {
             label="User ID"
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
+          />
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <ToggleField
+            label="Skip SSL verification"
+            description="Enable for local servers with self-signed certificates"
+            checked={skipSslVerify}
+            onChange={setSkipSslVerify}
           />
         </PanelSectionRow>
         <PanelSectionRow>

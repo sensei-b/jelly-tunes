@@ -23,6 +23,7 @@ DEFAULT_SETTINGS = {
     "server_url": "",
     "api_key": "",
     "user_id": "",
+    "skip_ssl_verify": False,
 }
 
 
@@ -50,15 +51,89 @@ def _save_settings(data):
 
 class Plugin:
 
+    # Resolved base URL for this session; None means not yet determined.
+    _url_cache: str | None = None
+
+    async def _discover_local_server(self) -> str | None:
+        """UDP broadcast on port 7359 to find a Jellyfin server on the LAN."""
+        import socket
+
+        loop = asyncio.get_event_loop()
+        response_data: list[bytes] = []
+        received = asyncio.Event()
+
+        class _Proto(asyncio.DatagramProtocol):
+            def datagram_received(self, data, addr):
+                response_data.append(data)
+                received.set()
+            def error_received(self, exc):
+                received.set()
+            def connection_lost(self, exc):
+                received.set()
+
+        try:
+            transport, _ = await loop.create_datagram_endpoint(
+                _Proto,
+                family=socket.AF_INET,
+                allow_broadcast=True,
+            )
+            transport.sendto(b"who is JellyfinServer?", ("255.255.255.255", 7359))
+            try:
+                await asyncio.wait_for(received.wait(), timeout=2.0)
+            except asyncio.TimeoutError:
+                pass
+            finally:
+                transport.close()
+
+            if response_data:
+                info = json.loads(response_data[0].decode("utf-8", errors="ignore"))
+                addr = info.get("Address", "").rstrip("/")
+                if addr:
+                    decky.logger.info(f"Discovered local Jellyfin at {addr}")
+                    return addr
+        except Exception as e:
+            decky.logger.warning(f"Local discovery error: {e}")
+        return None
+
+    async def _resolve_url(self, cfg: dict) -> str:
+        """Probe the configured URL; fall back to LAN discovery if unreachable."""
+        if self._url_cache is not None:
+            return self._url_cache
+
+        main_url = cfg["server_url"]
+        ssl_ctx = False if cfg.get("skip_ssl_verify") else SSL_CONTEXT
+
+        try:
+            connector = aiohttp.TCPConnector(ssl=ssl_ctx)
+            timeout = aiohttp.ClientTimeout(total=3.0)
+            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+                async with session.head(f"{main_url}/System/Info/Public") as resp:
+                    if resp.status < 500:
+                        decky.logger.info(f"Using configured URL: {main_url}")
+                        self._url_cache = main_url
+                        return main_url
+        except Exception:
+            pass
+
+        local = await self._discover_local_server()
+        if local:
+            self._url_cache = local
+            return local
+
+        self._url_cache = main_url
+        return main_url
+
     # -- Settings -------------------------------------------------
     async def get_settings(self):
         return _load_settings()
 
-    async def save_settings(self, server_url: str, api_key: str, user_id: str) -> bool:
+    async def save_settings(self, server_url: str, api_key: str, user_id: str, skip_ssl_verify: bool = False) -> bool:
+        self._url_cache = None
         _save_settings({
             "server_url": _normalize_server_url(server_url),
             "api_key": api_key.strip(),
             "user_id": user_id.strip(),
+            "skip_ssl_verify": bool(skip_ssl_verify),
         })
         return True
 
@@ -71,10 +146,12 @@ class Plugin:
         params = dict(extra_params) if extra_params else {}
         headers = {"X-Emby-Token": cfg["api_key"]}
 
-        url = f"{cfg['server_url']}{path}"
+        ssl_ctx = False if cfg.get("skip_ssl_verify") else SSL_CONTEXT
+        base = await self._resolve_url(cfg)
+        url = f"{base}{path}"
         try:
             timeout = aiohttp.ClientTimeout(total=10)
-            connector = aiohttp.TCPConnector(ssl=SSL_CONTEXT)
+            connector = aiohttp.TCPConnector(ssl=ssl_ctx)
             async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
                 async with session.get(url, params=params, headers=headers) as resp:
                     if resp.status == 404:
@@ -335,8 +412,9 @@ class Plugin:
             if not cfg["server_url"] or not cfg["api_key"]:
                 return web.Response(status=503, text="Not configured")
 
+            base = await self._resolve_url(cfg)
             upstream = (
-                f"{cfg['server_url']}/Audio/{item_id}/universal"
+                f"{base}/Audio/{item_id}/universal"
                 f"?api_key={cfg['api_key']}"
                 f"&DeviceId=JellyTunes"
                 f"&Container=opus,mp3,aac,m4a,flac,ogg,wav"
@@ -350,7 +428,8 @@ class Plugin:
                 req_headers["Range"] = request.headers["Range"]
 
             try:
-                connector = aiohttp.TCPConnector(ssl=SSL_CONTEXT)
+                ssl_ctx = False if cfg.get("skip_ssl_verify") else SSL_CONTEXT
+                connector = aiohttp.TCPConnector(ssl=ssl_ctx)
                 async with aiohttp.ClientSession(connector=connector) as session:
                     async with session.get(upstream, headers=req_headers) as resp:
                         fwd = {
