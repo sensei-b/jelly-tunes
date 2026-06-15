@@ -1,0 +1,396 @@
+import os
+import sys
+import json
+import ssl
+import asyncio
+import aiohttp
+import decky
+
+# py_modules is added to sys.path by decky-loader, but make sure it's
+# there for direct execution / IDE intellisense too.
+sys.path.insert(0, os.path.join(decky.DECKY_PLUGIN_DIR, "py_modules"))
+import certifi
+
+# SteamOS's bundled Python often can't find the system CA bundle, which
+# makes aiohttp's default SSL context fail to verify even valid
+# Let's Encrypt certs. certifi ships its own up-to-date CA bundle, so
+# we build an explicit SSL context from that and use it for every request.
+SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+
+SETTINGS_FILE = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
+
+DEFAULT_SETTINGS = {
+    "server_url": "",
+    "api_key": "",
+    "user_id": "",
+}
+
+
+def _normalize_server_url(url: str) -> str:
+    url = url.strip().rstrip("/")
+    if url and not url.lower().startswith(("http://", "https://")):
+        url = f"https://{url}"
+    return url
+
+
+def _load_settings():
+    try:
+        with open(SETTINGS_FILE, "r") as f:
+            data = json.load(f)
+            return {**DEFAULT_SETTINGS, **data}
+    except (FileNotFoundError, json.JSONDecodeError):
+        return dict(DEFAULT_SETTINGS)
+
+
+def _save_settings(data):
+    os.makedirs(decky.DECKY_PLUGIN_SETTINGS_DIR, exist_ok=True)
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(data, f)
+
+
+class Plugin:
+
+    # -- Settings -------------------------------------------------
+    async def get_settings(self):
+        return _load_settings()
+
+    async def save_settings(self, server_url: str, api_key: str, user_id: str) -> bool:
+        _save_settings({
+            "server_url": _normalize_server_url(server_url),
+            "api_key": api_key.strip(),
+            "user_id": user_id.strip(),
+        })
+        return True
+
+    # -- Internal helper for hitting the Jellyfin API -------------
+    async def _get(self, path: str, extra_params: dict | None = None):
+        cfg = _load_settings()
+        if not cfg["server_url"] or not cfg["api_key"] or not cfg["user_id"]:
+            return {"error": "not_configured"}
+
+        params = dict(extra_params) if extra_params else {}
+        headers = {"X-Emby-Token": cfg["api_key"]}
+
+        url = f"{cfg['server_url']}{path}"
+        try:
+            timeout = aiohttp.ClientTimeout(total=10)
+            connector = aiohttp.TCPConnector(ssl=SSL_CONTEXT)
+            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+                async with session.get(url, params=params, headers=headers) as resp:
+                    if resp.status == 404:
+                        # Jellyfin sometimes throws a generic 404
+                        # ("Error processing request.") for certain item
+                        # filter combinations instead of returning an
+                        # empty result set -- e.g. an artist that only
+                        # appears as a track-level performer and was
+                        # never the AlbumArtist on any album. Treat this
+                        # as "no results" so browsing doesn't break.
+                        body = await resp.text()
+                        decky.logger.warning(
+                            f"Jellyfin 404 treated as empty result: {resp.url} -- {body[:200]}"
+                        )
+                        return {"data": {"Items": []}}
+                    if resp.status != 200:
+                        body = await resp.text()
+                        decky.logger.error(
+                            f"Jellyfin request failed ({resp.status}): {resp.url} -- {body[:300]}"
+                        )
+                        return {"error": f"http_{resp.status}"}
+                    return {"data": await resp.json()}
+        except asyncio.TimeoutError:
+            decky.logger.error(f"Jellyfin request timed out: {url}")
+            return {"error": "timeout"}
+        except Exception as e:
+            decky.logger.error(f"Jellyfin request error: {e}")
+            return {"error": "connection_failed"}
+
+    # -- Library browsing ------------------------------------------
+    async def get_artists(self):
+        cfg = _load_settings()
+        result = await self._get("/Artists", {
+            "userId": cfg["user_id"],
+            "SortBy": "SortName",
+            "SortOrder": "Ascending",
+            "Recursive": "true",
+            "Limit": 300,
+        })
+        if "error" in result:
+            return result
+        return {"items": result["data"].get("Items", [])}
+
+    async def get_albums(self, artist_id: str):
+        cfg = _load_settings()
+        user_id = cfg["user_id"]
+        decky.logger.info(f"get_albums: start artist_id={artist_id!r}")
+        params_base = {
+            "SortBy": "ProductionYear,SortName",
+            "SortOrder": "Ascending",
+            "Recursive": "true",
+            "IncludeItemTypes": "MusicAlbum",
+            "Limit": 300,
+        }
+
+        # Try 1: AlbumArtistIds (matches ALBUMARTIST tag)
+        result = await self._get(f"/Users/{user_id}/Items", {
+            **params_base,
+            "AlbumArtistIds": artist_id,
+        })
+        if "error" not in result:
+            items = result["data"].get("Items", [])
+            decky.logger.info(f"get_albums: AlbumArtistIds → {len(items)} (total={result['data'].get('TotalRecordCount')})")
+            if items:
+                return {"items": items}
+
+        # Try 2: ArtistIds on MusicAlbum
+        result2 = await self._get(f"/Users/{user_id}/Items", {
+            **params_base,
+            "ArtistIds": artist_id,
+        })
+        if "error" not in result2:
+            items = result2["data"].get("Items", [])
+            decky.logger.info(f"get_albums: ArtistIds(album) → {len(items)} (total={result2['data'].get('TotalRecordCount')})")
+            if items:
+                return {"items": items}
+
+        # Try 3: ContributingArtistIds on MusicAlbum
+        result3 = await self._get(f"/Users/{user_id}/Items", {
+            **params_base,
+            "ContributingArtistIds": artist_id,
+        })
+        if "error" not in result3:
+            items = result3["data"].get("Items", [])
+            decky.logger.info(f"get_albums: ContributingArtistIds → {len(items)} (total={result3['data'].get('TotalRecordCount')})")
+            if items:
+                return {"items": items}
+
+        # Try 4: ParentId — treats the MusicArtist item as a folder.
+        # This uses Jellyfin's native library hierarchy (Artist → Album)
+        # and doesn't depend on artist cross-reference IDs being indexed.
+        result4 = await self._get(f"/Users/{user_id}/Items", {
+            "ParentId": artist_id,
+            "IncludeItemTypes": "MusicAlbum",
+            "SortBy": "ProductionYear,SortName",
+            "SortOrder": "Ascending",
+            "Limit": 300,
+        })
+        if "error" not in result4:
+            items = result4["data"].get("Items", [])
+            decky.logger.info(f"get_albums: ParentId(album) → {len(items)} (total={result4['data'].get('TotalRecordCount')})")
+            if items:
+                return {"items": items}
+
+        # Try 5: Walk audio tracks via ParentId and collect unique albums.
+        # Combines the hierarchy approach with the track-scrape fallback.
+        result5 = await self._get(f"/Users/{user_id}/Items", {
+            "ParentId": artist_id,
+            "Recursive": "true",
+            "IncludeItemTypes": "Audio",
+            "Limit": 1000,
+        })
+        if "error" not in result5:
+            tracks = result5["data"].get("Items", [])
+            decky.logger.info(f"get_albums: ParentId(tracks) → {len(tracks)} (total={result5['data'].get('TotalRecordCount')})")
+            if tracks:
+                seen: set = set()
+                albums = []
+                for t in tracks:
+                    aid = t.get("AlbumId")
+                    if aid and aid not in seen:
+                        seen.add(aid)
+                        albums.append({
+                            "Id": aid,
+                            "Name": t.get("Album") or "Unknown Album",
+                            "ProductionYear": t.get("ProductionYear"),
+                        })
+                albums.sort(key=lambda a: (a.get("ProductionYear") or 0, a["Name"]))
+                return {"items": albums}
+
+        # Try 6: Walk audio tracks via ArtistIds and collect unique albums.
+        result6 = await self._get(f"/Users/{user_id}/Items", {
+            "Recursive": "true",
+            "IncludeItemTypes": "Audio",
+            "ArtistIds": artist_id,
+            "Limit": 1000,
+        })
+        if "error" not in result6:
+            tracks = result6["data"].get("Items", [])
+            decky.logger.info(f"get_albums: ArtistIds(tracks) → {len(tracks)} (total={result6['data'].get('TotalRecordCount')})")
+            seen = set()
+            albums = []
+            for t in tracks:
+                aid = t.get("AlbumId")
+                if aid and aid not in seen:
+                    seen.add(aid)
+                    albums.append({
+                        "Id": aid,
+                        "Name": t.get("Album") or "Unknown Album",
+                        "ProductionYear": t.get("ProductionYear"),
+                    })
+            albums.sort(key=lambda a: (a.get("ProductionYear") or 0, a["Name"]))
+            if albums:
+                return {"items": albums}
+
+        # Tries 1-6 all use /Users/{userId}/Items, which returns 404 if the
+        # userId setting is wrong. Tries 7-8 use the admin /Items endpoint
+        # (no userId in the path) which only needs the API key to be valid.
+        decky.logger.info("get_albums: /Users/{userId}/Items all returned 404 — trying admin /Items endpoint")
+
+        # Try 7: Admin /Items with AlbumArtistIds
+        result7 = await self._get("/Items", {
+            **params_base,
+            "AlbumArtistIds": artist_id,
+        })
+        if "error" not in result7:
+            items = result7["data"].get("Items", [])
+            decky.logger.info(f"get_albums: admin AlbumArtistIds → {len(items)} (total={result7['data'].get('TotalRecordCount')})")
+            if items:
+                return {"items": items}
+
+        # Try 8: Admin /Items — scrape Audio tracks and collect unique albums.
+        result8 = await self._get("/Items", {
+            "Recursive": "true",
+            "IncludeItemTypes": "Audio",
+            "ArtistIds": artist_id,
+            "Limit": 1000,
+        })
+        if "error" not in result8:
+            tracks = result8["data"].get("Items", [])
+            decky.logger.info(f"get_albums: admin ArtistIds(tracks) → {len(tracks)} (total={result8['data'].get('TotalRecordCount')})")
+            seen = set()
+            albums = []
+            for t in tracks:
+                aid = t.get("AlbumId")
+                if aid and aid not in seen:
+                    seen.add(aid)
+                    albums.append({
+                        "Id": aid,
+                        "Name": t.get("Album") or "Unknown Album",
+                        "ProductionYear": t.get("ProductionYear"),
+                    })
+            albums.sort(key=lambda a: (a.get("ProductionYear") or 0, a["Name"]))
+            return {"items": albums}
+
+        decky.logger.warning(f"get_albums: all 8 tries returned 0 for artist_id={artist_id!r}")
+        return {"items": []}
+
+    async def get_tracks(self, album_id: str):
+        cfg = _load_settings()
+        params = {
+            "SortBy": "ParentIndexNumber,IndexNumber,SortName",
+            "SortOrder": "Ascending",
+            "Recursive": "true",
+            "IncludeItemTypes": "Audio",
+            "ParentId": album_id,
+            "Limit": 500,
+        }
+        result = await self._get(f"/Users/{cfg['user_id']}/Items", params)
+        if "error" not in result:
+            items = result["data"].get("Items", [])
+            if items:
+                return {"items": items}
+        # Fall back to admin endpoint if userId is invalid or returned empty.
+        # A bad userId causes Jellyfin to return 404, which _get converts to
+        # an empty result (no "error" key), so we must also fall through when
+        # items is empty — not just when there's an explicit error.
+        result2 = await self._get("/Items", params)
+        if "error" in result2:
+            return result2
+        return {"items": result2["data"].get("Items", [])}
+
+    # -- Playback -----------------------------------------------------
+    async def get_stream_url(self, item_id: str):
+        cfg = _load_settings()
+        if not cfg["server_url"] or not cfg["api_key"]:
+            return ""
+        # Use the universal endpoint so Jellyfin transcodes to MP3 when the
+        # original format (e.g. WMA) isn't supported by Chromium. For already-
+        # compatible formats (mp3/flac/aac/ogg) it streams the file directly.
+        # Omit UserId — the configured user_id may be invalid (admin API key
+        # auth is sufficient for streaming), and an invalid UserId causes
+        # Jellyfin to return 404, which makes the browser audio element fail.
+        return (
+            f"{cfg['server_url']}/Audio/{item_id}/universal"
+            f"?api_key={cfg['api_key']}"
+            f"&DeviceId=JellyTunes"
+            f"&Container=opus,mp3,aac,m4a,flac,ogg,wav"
+            f"&TranscodingContainer=mp3"
+            f"&AudioCodec=mp3"
+            f"&MaxStreamingBitrate=140000000"
+        )
+
+    # -- Audio proxy ---------------------------------------------------
+    # CEF (Steam overlay browser) connects to Jellyfin directly for
+    # audio and often fails the SSL handshake (TLSV1_ALERT_INTERNAL_ERROR).
+    # We work around this by running a plain-HTTP proxy on localhost:9099
+    # so CEF never touches Jellyfin's SSL; Python handles it with certifi.
+    _PROXY_PORT = 9099
+    _proxy_runner = None
+
+    async def _run_proxy(self):
+        from aiohttp import web
+
+        async def audio_proxy(request):
+            item_id = request.match_info["item_id"]
+            cfg = _load_settings()
+            if not cfg["server_url"] or not cfg["api_key"]:
+                return web.Response(status=503, text="Not configured")
+
+            upstream = (
+                f"{cfg['server_url']}/Audio/{item_id}/universal"
+                f"?api_key={cfg['api_key']}"
+                f"&DeviceId=JellyTunes"
+                f"&Container=opus,mp3,aac,m4a,flac,ogg,wav"
+                f"&TranscodingContainer=mp3"
+                f"&AudioCodec=mp3"
+                f"&MaxStreamingBitrate=140000000"
+            )
+
+            req_headers = {}
+            if "Range" in request.headers:
+                req_headers["Range"] = request.headers["Range"]
+
+            try:
+                connector = aiohttp.TCPConnector(ssl=SSL_CONTEXT)
+                async with aiohttp.ClientSession(connector=connector) as session:
+                    async with session.get(upstream, headers=req_headers) as resp:
+                        fwd = {
+                            "Access-Control-Allow-Origin": "*",
+                            "Content-Type": resp.headers.get("Content-Type", "audio/mpeg"),
+                        }
+                        for h in ("Content-Length", "Content-Range", "Accept-Ranges"):
+                            if h in resp.headers:
+                                fwd[h] = resp.headers[h]
+                        stream_resp = web.StreamResponse(status=resp.status, headers=fwd)
+                        await stream_resp.prepare(request)
+                        async for chunk in resp.content.iter_chunked(32768):
+                            await stream_resp.write(chunk)
+                        await stream_resp.write_eof()
+                        return stream_resp
+            except Exception as e:
+                decky.logger.error(f"Audio proxy error for {item_id}: {e}")
+                return web.Response(status=502, text=str(e))
+
+        app = web.Application()
+        app.router.add_get("/audio/{item_id}", audio_proxy)
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+        from aiohttp.web_runner import TCPSite
+        site = TCPSite(runner, "127.0.0.1", self._PROXY_PORT)
+        await site.start()
+        self._proxy_runner = runner
+        decky.logger.info(f"Audio proxy listening on port {self._PROXY_PORT}")
+
+    # -- Lifecycle ------------------------------------------------------
+    async def _main(self):
+        decky.logger.info("Jelly Tunes loaded")
+        asyncio.create_task(self._run_proxy())
+
+    async def _unload(self):
+        if self._proxy_runner is not None:
+            await self._proxy_runner.cleanup()
+            decky.logger.info("Audio proxy stopped")
+        decky.logger.info("Jelly Tunes unloaded")
+
+    async def _uninstall(self):
+        pass

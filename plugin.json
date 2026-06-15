@@ -1,0 +1,11 @@
+{
+  "name": "Jelly Tunes",
+  "author": "Llarin",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["music", "jellyfin", "media"],
+    "description": "Browse and play your Jellyfin music library from Game Mode.",
+    "image": "https://opengraph.githubassets.com/1/SteamDeckHomebrew/PluginLoader"
+  }
+}
