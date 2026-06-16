@@ -41,6 +41,7 @@ interface ItemsResult {
 
 interface JellySettings {
   server_url: string;
+  local_url: string;
   api_key: string;
   user_id: string;
   skip_ssl_verify: boolean;
@@ -53,7 +54,7 @@ type RepeatMode = "off" | "all" | "one";
 
 const getSettings = callable<[], JellySettings>("get_settings");
 const saveSettingsCall = callable<
-  [server_url: string, api_key: string, user_id: string, skip_ssl_verify: boolean],
+  [server_url: string, api_key: string, user_id: string, local_url: string, skip_ssl_verify: boolean],
   boolean
 >("save_settings");
 const getArtists = callable<[], ItemsResult>("get_artists");
@@ -303,6 +304,7 @@ function Content() {
 
   // Settings form state
   const [serverUrl, setServerUrl] = useState("");
+  const [localUrl, setLocalUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [userId, setUserId] = useState("");
   const [skipSslVerify, setSkipSslVerify] = useState(false);
@@ -334,6 +336,7 @@ function Content() {
     (async () => {
       const cfg = await getSettings();
       setServerUrl(cfg.server_url);
+      setLocalUrl(cfg.local_url ?? "");
       setApiKey(cfg.api_key);
       setUserId(cfg.user_id);
       setSkipSslVerify(cfg.skip_ssl_verify ?? false);
@@ -574,7 +577,7 @@ function Content() {
   // -- Settings ---------------------------------------------------
   const handleSaveSettings = async () => {
     setSaving(true);
-    await saveSettingsCall(serverUrl, apiKey, userId, skipSslVerify);
+    await saveSettingsCall(serverUrl, apiKey, userId, localUrl, skipSslVerify);
     setSaving(false);
     setConfigured(true);
     setView("artists");
@@ -621,6 +624,14 @@ function Content() {
             value={serverUrl}
             onChange={(e) => setServerUrl(e.target.value)}
             mustBeURL
+          />
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <TextField
+            label="Local URL (optional)"
+            description="Direct LAN address, e.g. http://192.168.1.x:8096. Used instead of Server URL when reachable."
+            value={localUrl}
+            onChange={(e) => setLocalUrl(e.target.value)}
           />
         </PanelSectionRow>
         <PanelSectionRow>

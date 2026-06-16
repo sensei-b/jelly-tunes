@@ -106,7 +106,7 @@ const saveSettingsCall = callable("save_settings");
 const getArtists = callable("get_artists");
 const getAlbums = callable("get_albums");
 const getTracks = callable("get_tracks");
-const getStreamUrl = callable("get_stream_url");
+callable("get_stream_url");
 // Single shared audio element so playback survives view changes
 let globalAudio = null;
 let globalNowPlaying = null;
@@ -146,6 +146,14 @@ const THUMB_FALLBACK_STYLE = {
     background: "rgba(255, 255, 255, 0.08)",
     flexShrink: 0,
 };
+const MINI_BUTTON_STYLE = {
+    flex: 1,
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "10px 0",
+};
 // Album / artist / track artwork with a graceful fallback to a music icon
 // if Jellyfin has no image for that item (or the request errors out).
 function Thumb({ src, fallback }) {
@@ -157,56 +165,55 @@ function Thumb({ src, fallback }) {
     // eslint-disable-next-line jsx-a11y/alt-text
     SP_JSX.jsx("img", { src: src, onError: () => setErrored(true), style: THUMB_STYLE }));
 }
-const MINI_BUTTON_STYLE = {
-    flex: 1,
-    minWidth: 0,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "10px 0",
-};
 function thumbUrl(serverUrl, apiKey, id) {
-    if (!serverUrl || !apiKey || !id) return "";
+    if (!serverUrl || !apiKey || !id)
+        return "";
     return `${serverUrl}/Items/${id}/Images/Primary?fillWidth=64&fillHeight=64&quality=80&api_key=${apiKey}`;
 }
 function fmtTime(s) {
-    if (!isFinite(s) || s < 0) return "0:00";
+    if (!isFinite(s) || s < 0)
+        return "0:00";
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${m}:${sec.toString().padStart(2, "0")}`;
 }
-function NowPlaying({ nowPlaying, isPlaying, currentTrackId, nowPlayingArtist, nowPlayingAlbum, currentTime, trackDuration, shuffle, repeat, serverUrl, apiKey, onTogglePause, onSkip, onToggleShuffle, onCycleRepeat, onSeek }) {
+function NowPlaying({ nowPlaying, isPlaying, currentTrackId, nowPlayingArtist, nowPlayingAlbum, currentTime, trackDuration, shuffle, repeat, serverUrl, apiKey, onTogglePause, onSkip, onToggleShuffle, onCycleRepeat, onSeek, }) {
     const progress = trackDuration > 0 ? currentTime / trackDuration : 0;
     const handleSeek = (e) => {
-        if (!trackDuration) return;
+        if (!trackDuration)
+            return;
         const rect = e.currentTarget.getBoundingClientRect();
         onSeek(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
     };
-    return (SP_JSX.jsxs(SP_JSX.Fragment, { children: [
-        SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.Focusable, { "flow-children": "row", style: { display: "flex", flexDirection: "row", gap: "4px", width: "100%" }, children: [
-            SP_JSX.jsxs(DFL.DialogButton, { onClick: onCycleRepeat, style: { ...MINI_BUTTON_STYLE, color: repeat !== "off" ? ACCENT : undefined }, children: [SP_JSX.jsx(FaRedo, {}), repeat === "one" && SP_JSX.jsx("span", { style: { fontSize: "0.6em", marginLeft: 2 }, children: "1" })] }),
-            SP_JSX.jsx(DFL.DialogButton, { onClick: () => onSkip(-1), style: MINI_BUTTON_STYLE, children: SP_JSX.jsx(FaStepBackward, {}) }),
-            SP_JSX.jsx(DFL.DialogButton, { onClick: onTogglePause, style: MINI_BUTTON_STYLE, children: isPlaying ? SP_JSX.jsx(FaPause, {}) : SP_JSX.jsx(FaPlay, {}) }),
-            SP_JSX.jsx(DFL.DialogButton, { onClick: () => onSkip(1), style: MINI_BUTTON_STYLE, children: SP_JSX.jsx(FaStepForward, {}) }),
-            SP_JSX.jsx(DFL.DialogButton, { onClick: onToggleShuffle, style: { ...MINI_BUTTON_STYLE, color: shuffle ? ACCENT : undefined }, children: SP_JSX.jsx(FaRandom, {}) })
-        ] }) }),
-        SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 10, width: "100%" }, children: [
-            SP_JSX.jsx(Thumb, { src: thumbUrl(serverUrl, apiKey, currentTrackId ?? ""), fallback: SP_JSX.jsx(FaMusic, {}) }),
-            SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0 }, children: [
-                SP_JSX.jsx("div", { style: { fontWeight: "bold", fontSize: "0.9em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: ACCENT }, children: nowPlaying }),
-                (nowPlayingArtist || nowPlayingAlbum) && SP_JSX.jsx("div", { style: { fontSize: "0.75em", opacity: 0.7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: [nowPlayingArtist, nowPlayingAlbum].filter(Boolean).join(" • ") })
-            ] })
-        ] }) }),
-        SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { width: "100%", paddingBottom: 2 }, children: [
-            SP_JSX.jsx("div", { style: { background: "rgba(255,255,255,0.15)", borderRadius: 3, height: 4, cursor: "pointer", position: "relative" }, onClick: handleSeek, children:
-                SP_JSX.jsx("div", { style: { background: ACCENT, borderRadius: 3, height: "100%", width: `${progress * 100}%`, transition: "width 0.3s linear" } })
-            }),
-            SP_JSX.jsxs("div", { style: { display: "flex", justifyContent: "space-between", fontSize: "0.7em", opacity: 0.6, marginTop: 2 }, children: [
-                SP_JSX.jsx("span", { children: fmtTime(currentTime) }),
-                SP_JSX.jsx("span", { children: fmtTime(trackDuration) })
-            ] })
-        ] }) })
-    ] }));
+    return (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.Focusable
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore — flow-children is a Steam UI prop not in the type defs
+                , { "flow-children": "row", style: { display: "flex", flexDirection: "row", gap: "4px", width: "100%" }, children: [SP_JSX.jsxs(DFL.DialogButton, { onClick: onCycleRepeat, style: { ...MINI_BUTTON_STYLE, color: repeat !== "off" ? ACCENT : undefined }, children: [SP_JSX.jsx(FaRedo, {}), repeat === "one" && SP_JSX.jsx("span", { style: { fontSize: "0.6em", marginLeft: 2 }, children: "1" })] }), SP_JSX.jsx(DFL.DialogButton, { onClick: () => onSkip(-1), style: MINI_BUTTON_STYLE, children: SP_JSX.jsx(FaStepBackward, {}) }), SP_JSX.jsx(DFL.DialogButton, { onClick: onTogglePause, style: MINI_BUTTON_STYLE, children: isPlaying ? SP_JSX.jsx(FaPause, {}) : SP_JSX.jsx(FaPlay, {}) }), SP_JSX.jsx(DFL.DialogButton, { onClick: () => onSkip(1), style: MINI_BUTTON_STYLE, children: SP_JSX.jsx(FaStepForward, {}) }), SP_JSX.jsx(DFL.DialogButton, { onClick: onToggleShuffle, style: { ...MINI_BUTTON_STYLE, color: shuffle ? ACCENT : undefined }, children: SP_JSX.jsx(FaRandom, {}) })] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 10, width: "100%" }, children: [SP_JSX.jsx(Thumb, { src: thumbUrl(serverUrl, apiKey, currentTrackId ?? ""), fallback: SP_JSX.jsx(FaMusic, {}) }), SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0 }, children: [SP_JSX.jsx("div", { style: {
+                                        fontWeight: "bold",
+                                        fontSize: "0.9em",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                        color: ACCENT,
+                                    }, children: nowPlaying }), (nowPlayingArtist || nowPlayingAlbum) && (SP_JSX.jsx("div", { style: {
+                                        fontSize: "0.75em",
+                                        opacity: 0.7,
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                    }, children: [nowPlayingArtist, nowPlayingAlbum].filter(Boolean).join(" • ") }))] })] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { width: "100%", paddingBottom: 2 }, children: [SP_JSX.jsx("div", { style: {
+                                background: "rgba(255,255,255,0.15)",
+                                borderRadius: 3,
+                                height: 4,
+                                cursor: "pointer",
+                                position: "relative",
+                            }, onClick: handleSeek, children: SP_JSX.jsx("div", { style: {
+                                    background: ACCENT,
+                                    borderRadius: 3,
+                                    height: "100%",
+                                    width: `${progress * 100}%`,
+                                    transition: "width 0.3s linear",
+                                } }) }), SP_JSX.jsxs("div", { style: { display: "flex", justifyContent: "space-between", fontSize: "0.7em", opacity: 0.6, marginTop: 2 }, children: [SP_JSX.jsx("span", { children: fmtTime(currentTime) }), SP_JSX.jsx("span", { children: fmtTime(trackDuration) })] })] }) })] }));
 }
 function Content() {
     const [view, setView] = SP_REACT.useState("artists");
@@ -235,8 +242,10 @@ function Content() {
     const repeatRef = SP_REACT.useRef(globalRepeat);
     // Settings form state
     const [serverUrl, setServerUrl] = SP_REACT.useState("");
+    const [localUrl, setLocalUrl] = SP_REACT.useState("");
     const [apiKey, setApiKey] = SP_REACT.useState("");
     const [userId, setUserId] = SP_REACT.useState("");
+    const [skipSslVerify, setSkipSslVerify] = SP_REACT.useState(false);
     const [saving, setSaving] = SP_REACT.useState(false);
     const [configured, setConfigured] = SP_REACT.useState(false);
     // -- Load settings + initial library on mount --------------
@@ -264,8 +273,10 @@ function Content() {
         (async () => {
             const cfg = await getSettings();
             setServerUrl(cfg.server_url);
+            setLocalUrl(cfg.local_url ?? "");
             setApiKey(cfg.api_key);
             setUserId(cfg.user_id);
+            setSkipSslVerify(cfg.skip_ssl_verify ?? false);
             const ready = !!(cfg.server_url && cfg.api_key && cfg.user_id);
             setConfigured(ready);
             if (ready) {
@@ -279,7 +290,8 @@ function Content() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     SP_REACT.useEffect(() => {
-        if (!isPlaying) return;
+        if (!isPlaying)
+            return;
         const id = setInterval(() => {
             if (globalAudio) {
                 setCurrentTime(globalAudio.currentTime);
@@ -331,12 +343,11 @@ function Content() {
         setView("tracks");
     };
     // -- Playback ---------------------------------------------------
-    // Use the local Python proxy so CEF never touches Jellyfin's SSL directly.
     const buildStreamUrl = (itemId) => {
-        if (!itemId) return "";
+        if (!itemId)
+            return "";
         return `http://localhost:9099/audio/${itemId}`;
     };
-    // Plays the track at `index` within the current queue (queueRef).
     const playQueueIndex = (index) => {
         const queue = queueRef.current;
         if (index < 0 || index >= queue.length) {
@@ -386,8 +397,6 @@ function Content() {
         globalNowPlaying = track.Name;
         globalCurrentTrackId = track.Id;
     };
-    // Called when the current track finishes - decides what plays next
-    // based on the current shuffle/repeat settings.
     const handleTrackEnded = () => {
         const queue = queueRef.current;
         if (queue.length === 0) {
@@ -419,7 +428,6 @@ function Content() {
             globalCurrentTrackId = null;
         }
     };
-    // Manual skip forward/back (honors shuffle, wraps if repeat-all)
     const skip = (direction) => {
         const queue = queueRef.current;
         if (queue.length === 0)
@@ -441,8 +449,6 @@ function Content() {
         }
         playQueueIndex(next);
     };
-    // Tapping a track loads the whole current album as the queue,
-    // starting playback from that track.
     const playTrack = (track) => {
         const artistName = selectedArtist?.Name ?? null;
         const albumName = selectedAlbum?.Name ?? null;
@@ -488,15 +494,25 @@ function Content() {
     // -- Settings ---------------------------------------------------
     const handleSaveSettings = async () => {
         setSaving(true);
-        await saveSettingsCall(serverUrl, apiKey, userId);
+        await saveSettingsCall(serverUrl, apiKey, userId, localUrl, skipSslVerify);
         setSaving(false);
         setConfigured(true);
         setView("artists");
         await loadArtists();
     };
+    // -- Shared now-playing props ----------------------------------
     const nowPlayingProps = nowPlaying ? {
-        nowPlaying, isPlaying, currentTrackId, nowPlayingArtist, nowPlayingAlbum,
-        currentTime, trackDuration, shuffle, repeat, serverUrl, apiKey,
+        nowPlaying,
+        isPlaying,
+        currentTrackId,
+        nowPlayingArtist,
+        nowPlayingAlbum,
+        currentTime,
+        trackDuration,
+        shuffle,
+        repeat,
+        serverUrl,
+        apiKey,
         onTogglePause: togglePause,
         onSkip: skip,
         onToggleShuffle: toggleShuffle,
@@ -506,7 +522,7 @@ function Content() {
     const ErrorRow = () => error ? (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { color: "#ff6b6b", padding: "4px 0" }, children: friendlyError(error) }) })) : null;
     // -- Settings view ------------------------------------------------
     if (view === "settings") {
-        return (SP_JSX.jsxs(DFL.PanelSection, { title: "Jellyfin Settings", children: [SP_JSX.jsx(ErrorRow, {}), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: "Server URL", value: serverUrl, onChange: (e) => setServerUrl(e.target.value), mustBeURL: true }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: "API Key", value: apiKey, onChange: (e) => setApiKey(e.target.value), bIsPassword: true }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: "User ID", value: userId, onChange: (e) => setUserId(e.target.value) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleSaveSettings, children: saving ? "Saving..." : "Save & Connect" }) }), configured && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.ButtonItem, { layout: "below", onClick: () => setView("artists"), children: [SP_JSX.jsx(FaArrowLeft, {}), " Back to library"] }) }))] }));
+        return (SP_JSX.jsxs(DFL.PanelSection, { title: "Jellyfin Settings", children: [SP_JSX.jsx(ErrorRow, {}), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: "Server URL", value: serverUrl, onChange: (e) => setServerUrl(e.target.value), mustBeURL: true }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: "Local URL (optional)", description: "Direct LAN address, e.g. http://192.168.1.x:8096. Used instead of Server URL when reachable.", value: localUrl, onChange: (e) => setLocalUrl(e.target.value) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: "API Key", value: apiKey, onChange: (e) => setApiKey(e.target.value), bIsPassword: true }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: "User ID", value: userId, onChange: (e) => setUserId(e.target.value) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ToggleField, { label: "Skip SSL verification", description: "Enable for local servers with self-signed certificates", checked: skipSslVerify, onChange: setSkipSslVerify }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleSaveSettings, children: saving ? "Saving..." : "Save & Connect" }) }), configured && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.ButtonItem, { layout: "below", onClick: () => setView("artists"), children: [SP_JSX.jsx(FaArrowLeft, {}), " Back to library"] }) }))] }));
     }
     // -- Loading state --------------------------------------------------
     if (loading) {
@@ -514,16 +530,14 @@ function Content() {
     }
     // -- Albums view ------------------------------------------------------
     if (view === "albums") {
-        return (SP_JSX.jsxs(DFL.PanelSection, { title: selectedArtist?.Name ?? "Albums", children: [SP_JSX.jsx(ErrorRow, {}), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.ButtonItem, { layout: "below", onClick: () => setView("artists"), children: [SP_JSX.jsx(FaArrowLeft, {}), " Artists"] }) }), nowPlayingProps && SP_JSX.jsx(NowPlaying, nowPlayingProps), albums.map((album) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.ButtonItem, { layout: "below", icon: SP_JSX.jsx(Thumb, { src: thumbUrl(serverUrl, apiKey, album.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), onClick: () => openTracks(album), children: [album.Name, album.ProductionYear ? ` (${album.ProductionYear})` : ""] }) }, album.Id))), albums.length === 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: "No albums found for this artist." }))] }));
+        return (SP_JSX.jsxs(DFL.PanelSection, { title: selectedArtist?.Name ?? "Albums", children: [SP_JSX.jsx(ErrorRow, {}), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.ButtonItem, { layout: "below", onClick: () => setView("artists"), children: [SP_JSX.jsx(FaArrowLeft, {}), " Artists"] }) }), nowPlayingProps && SP_JSX.jsx(NowPlaying, { ...nowPlayingProps }), albums.map((album) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.ButtonItem, { layout: "below", icon: SP_JSX.jsx(Thumb, { src: thumbUrl(serverUrl, apiKey, album.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), onClick: () => openTracks(album), children: [album.Name, album.ProductionYear ? ` (${album.ProductionYear})` : ""] }) }, album.Id))), albums.length === 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: "No albums found for this artist." }))] }));
     }
     // -- Tracks view -------------------------------------------------------
     if (view === "tracks") {
-        return (SP_JSX.jsxs(DFL.PanelSection, { title: selectedAlbum?.Name ?? "Tracks", children: [SP_JSX.jsx(ErrorRow, {}), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.ButtonItem, { layout: "below", onClick: () => setView("albums"), children: [SP_JSX.jsx(FaArrowLeft, {}), " Albums"] }) }), nowPlayingProps && SP_JSX.jsx(NowPlaying, nowPlayingProps), tracks.map((track) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", icon: SP_JSX.jsx(Thumb, { src: thumbUrl(serverUrl, apiKey, track.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), onClick: () => playTrack(track), children: SP_JSX.jsxs("span", { style: {
-                                color: track.Id === currentTrackId ? ACCENT : undefined,
-                            }, children: [track.IndexNumber ? `${track.IndexNumber}. ` : "", track.Name] }) }) }, track.Id))), tracks.length === 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: "No tracks found on this album." }))] }));
+        return (SP_JSX.jsxs(DFL.PanelSection, { title: selectedAlbum?.Name ?? "Tracks", children: [SP_JSX.jsx(ErrorRow, {}), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.ButtonItem, { layout: "below", onClick: () => setView("albums"), children: [SP_JSX.jsx(FaArrowLeft, {}), " Albums"] }) }), nowPlayingProps && SP_JSX.jsx(NowPlaying, { ...nowPlayingProps }), tracks.map((track) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", icon: SP_JSX.jsx(Thumb, { src: thumbUrl(serverUrl, apiKey, track.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), onClick: () => playTrack(track), children: SP_JSX.jsxs("span", { style: { color: track.Id === currentTrackId ? ACCENT : undefined }, children: [track.IndexNumber ? `${track.IndexNumber}. ` : "", track.Name] }) }) }, track.Id))), tracks.length === 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: "No tracks found on this album." }))] }));
     }
     // -- Artists view (default) -------------------------------------------
-    return (SP_JSX.jsxs(DFL.PanelSection, { title: "Jelly Tunes", children: [SP_JSX.jsx(ErrorRow, {}), nowPlayingProps && SP_JSX.jsx(NowPlaying, nowPlayingProps), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: "Search artists", value: artistSearch, onChange: (e) => setArtistSearch(e.target.value), bShowClearAction: true, bAlwaysShowClearAction: artistSearch.length > 0 }) }), filteredArtists.map((artist) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", icon: SP_JSX.jsx(Thumb, { src: thumbUrl(serverUrl, apiKey, artist.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), onClick: () => openAlbums(artist), children: artist.Name }) }, artist.Id))), artists.length === 0 && !error && (SP_JSX.jsx(DFL.PanelSectionRow, { children: "No artists found in your library." })), artists.length > 0 && filteredArtists.length === 0 && (SP_JSX.jsxs(DFL.PanelSectionRow, { children: ["No artists match \"", artistSearch, "\"."] })), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.ButtonItem, { layout: "below", onClick: () => setView("settings"), children: [SP_JSX.jsx(FaCog, {}), " Settings"] }) })] }));
+    return (SP_JSX.jsxs(DFL.PanelSection, { title: "Jelly Tunes", children: [SP_JSX.jsx(ErrorRow, {}), nowPlayingProps && SP_JSX.jsx(NowPlaying, { ...nowPlayingProps }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: "Search artists", value: artistSearch, onChange: (e) => setArtistSearch(e.target.value), bShowClearAction: true, bAlwaysShowClearAction: artistSearch.length > 0 }) }), filteredArtists.map((artist) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", icon: SP_JSX.jsx(Thumb, { src: thumbUrl(serverUrl, apiKey, artist.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), onClick: () => openAlbums(artist), children: artist.Name }) }, artist.Id))), artists.length === 0 && !error && (SP_JSX.jsx(DFL.PanelSectionRow, { children: "No artists found in your library." })), artists.length > 0 && filteredArtists.length === 0 && (SP_JSX.jsxs(DFL.PanelSectionRow, { children: ["No artists match \"", artistSearch, "\"."] })), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.ButtonItem, { layout: "below", onClick: () => setView("settings"), children: [SP_JSX.jsx(FaCog, {}), " Settings"] }) })] }));
 }
 var index = definePlugin(() => {
     return {

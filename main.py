@@ -21,6 +21,7 @@ SETTINGS_FILE = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
 
 DEFAULT_SETTINGS = {
     "server_url": "",
+    "local_url": "",
     "api_key": "",
     "user_id": "",
     "skip_ssl_verify": False,
@@ -99,41 +100,50 @@ class Plugin:
         return None
 
     async def _resolve_url(self, cfg: dict) -> str:
-        """Probe the configured URL for a valid Jellyfin response; fall back to LAN discovery."""
+        """Probe configured URLs for a valid Jellyfin response; fall back to LAN discovery."""
         if self._url_cache is not None:
             return self._url_cache
 
         main_url = cfg["server_url"]
+        local_url = cfg.get("local_url", "").strip().rstrip("/")
         ssl_ctx = False if cfg.get("skip_ssl_verify") else SSL_CONTEXT
 
         # Validate by fetching /System/Info/Public and checking the JSON response
         # contains a Jellyfin-specific field. A plain status check isn't enough —
         # some routers intercept the request and return 200/302 from their own UI.
-        try:
-            connector = aiohttp.TCPConnector(ssl=ssl_ctx)
-            timeout = aiohttp.ClientTimeout(total=3.0)
-            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-                async with session.get(f"{main_url}/System/Info/Public") as resp:
-                    decky.logger.info(f"Probe {main_url}/System/Info/Public → {resp.status}")
-                    if resp.status == 200:
-                        try:
+        async def _probe(url: str) -> bool:
+            try:
+                connector = aiohttp.TCPConnector(ssl=ssl_ctx)
+                timeout = aiohttp.ClientTimeout(total=3.0)
+                async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+                    async with session.get(f"{url}/System/Info/Public") as resp:
+                        decky.logger.info(f"Probe {url}/System/Info/Public → {resp.status}")
+                        if resp.status == 200:
                             body = await resp.json(content_type=None)
                             if isinstance(body, dict) and "ProductName" in body:
-                                decky.logger.info(f"Configured URL is reachable, using {main_url}")
-                                self._url_cache = main_url
-                                return main_url
+                                return True
                             decky.logger.warning(f"Probe returned 200 but not Jellyfin JSON: {str(body)[:100]}")
-                        except Exception as e:
-                            decky.logger.warning(f"Probe response not valid JSON: {e}")
-        except Exception as e:
-            decky.logger.info(f"Probe failed ({type(e).__name__}: {e}), trying LAN discovery")
+            except Exception as e:
+                decky.logger.info(f"Probe {url} failed ({type(e).__name__}: {e})")
+            return False
+
+        # Try local URL first — bypasses NAT hairpin issues when on the same LAN.
+        if local_url and await _probe(local_url):
+            decky.logger.info(f"Local URL is reachable, using {local_url}")
+            self._url_cache = local_url
+            return local_url
+
+        if await _probe(main_url):
+            decky.logger.info(f"Main URL is reachable, using {main_url}")
+            self._url_cache = main_url
+            return main_url
 
         local = await self._discover_local_server()
         if local:
             self._url_cache = local
             return local
 
-        decky.logger.warning(f"LAN discovery found nothing, falling back to {main_url}")
+        decky.logger.warning(f"All probes failed, falling back to {main_url}")
         self._url_cache = main_url
         return main_url
 
@@ -141,10 +151,11 @@ class Plugin:
     async def get_settings(self):
         return _load_settings()
 
-    async def save_settings(self, server_url: str, api_key: str, user_id: str, skip_ssl_verify: bool = False) -> bool:
+    async def save_settings(self, server_url: str, api_key: str, user_id: str, local_url: str = "", skip_ssl_verify: bool = False) -> bool:
         self._url_cache = None
         _save_settings({
             "server_url": _normalize_server_url(server_url),
+            "local_url": _normalize_server_url(local_url),
             "api_key": api_key.strip(),
             "user_id": user_id.strip(),
             "skip_ssl_verify": bool(skip_ssl_verify),
