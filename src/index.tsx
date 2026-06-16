@@ -164,10 +164,16 @@ function MarqueeText({ text }: { text: string }) {
 
   useEffect(() => {
     ensureMarqueeStyle();
-    if (outerRef.current && innerRef.current) {
-      const overflow = innerRef.current.scrollWidth - outerRef.current.clientWidth;
-      setScroll(Math.max(0, overflow));
-    }
+    const measure = () => {
+      if (outerRef.current && innerRef.current) {
+        const overflow = innerRef.current.scrollWidth - outerRef.current.clientWidth;
+        setScroll(Math.max(0, overflow));
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (outerRef.current) ro.observe(outerRef.current);
+    return () => ro.disconnect();
   }, [text]);
 
   const innerStyle: React.CSSProperties = { display: "inline-block", whiteSpace: "nowrap" };

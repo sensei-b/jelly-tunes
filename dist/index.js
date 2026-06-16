@@ -182,10 +182,17 @@ function MarqueeText({ text }) {
     const [scroll, setScroll] = SP_REACT.useState(0);
     SP_REACT.useEffect(() => {
         ensureMarqueeStyle();
-        if (outerRef.current && innerRef.current) {
-            const overflow = innerRef.current.scrollWidth - outerRef.current.clientWidth;
-            setScroll(Math.max(0, overflow));
-        }
+        const measure = () => {
+            if (outerRef.current && innerRef.current) {
+                const overflow = innerRef.current.scrollWidth - outerRef.current.clientWidth;
+                setScroll(Math.max(0, overflow));
+            }
+        };
+        measure();
+        const ro = new ResizeObserver(measure);
+        if (outerRef.current)
+            ro.observe(outerRef.current);
+        return () => ro.disconnect();
     }, [text]);
     const innerStyle = { display: "inline-block", whiteSpace: "nowrap" };
     if (scroll > 0) {
