@@ -139,6 +139,10 @@ function Content() {
 
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState<RepeatMode>("off");
+  const [nowPlayingArtist, setNowPlayingArtist] = useState<string | null>(null);
+  const [nowPlayingAlbum, setNowPlayingAlbum] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [trackDuration, setTrackDuration] = useState(0);
 
   const [artistSearch, setArtistSearch] = useState("");
 
@@ -179,10 +183,28 @@ function Content() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!isPlaying) return;
+    const id = setInterval(() => {
+      if (globalAudio) {
+        setCurrentTime(globalAudio.currentTime);
+        setTrackDuration(isFinite(globalAudio.duration) ? globalAudio.duration : 0);
+      }
+    }, 500);
+    return () => clearInterval(id);
+  }, [isPlaying]);
+
   // -- Artwork helper -------------------------------------------
   const getImageUrl = (id: string): string => {
     if (!serverUrl || !apiKey || !id) return "";
     return `${serverUrl}/Items/${id}/Images/Primary?fillWidth=64&fillHeight=64&quality=80&api_key=${apiKey}`;
+  };
+
+  const fmtTime = (s: number): string => {
+    if (!isFinite(s) || s < 0) return "0:00";
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
   };
 
   // -- Search -----------------------------------------------------
@@ -263,6 +285,8 @@ function Content() {
       globalAudio = null;
     }
 
+    setCurrentTime(0);
+    setTrackDuration(0);
     queueIndexRef.current = index;
 
     globalAudio = new Audio(url);
@@ -345,6 +369,8 @@ function Content() {
   // Tapping a track loads the whole current album as the queue,
   // starting playback from that track.
   const playTrack = (track: JellyfinItem) => {
+    setNowPlayingArtist(selectedArtist?.Name ?? null);
+    setNowPlayingAlbum(selectedAlbum?.Name ?? null);
     const index = tracks.findIndex((t) => t.Id === track.Id);
     queueRef.current = tracks;
     playQueueIndex(index >= 0 ? index : 0);
@@ -387,54 +413,97 @@ function Content() {
   const NowPlaying = () => {
     if (!nowPlaying) return null;
 
+    const progress = trackDuration > 0 ? currentTime / trackDuration : 0;
+
+    const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!globalAudio || !trackDuration) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      globalAudio.currentTime = ratio * trackDuration;
+      setCurrentTime(globalAudio.currentTime);
+    };
+
     return (
       <>
         <PanelSectionRow>
-          <ButtonItem
-            layout="below"
-            icon={<Thumb src={getImageUrl(currentTrackId ?? "")} fallback={<FaMusic />} />}
-            onClick={togglePause}
-          >
-            {isPlaying ? <FaPause /> : <FaPlay />} {nowPlaying}
-          </ButtonItem>
-        </PanelSectionRow>
-        <PanelSectionRow>
-          <Focusable
-            style={{
-              display: "flex",
-              flexDirection: "row",
-              gap: "4px",
-              width: "100%",
-            }}
-          >
+          <Focusable style={{ display: "flex", flexDirection: "row", gap: "4px", width: "100%" }}>
             <DialogButton
-              onClick={toggleShuffle}
-              style={{
-                ...MINI_BUTTON_STYLE,
-                color: shuffle ? ACCENT : undefined,
-              }}
+              onClick={cycleRepeat}
+              style={{ ...MINI_BUTTON_STYLE, color: repeat !== "off" ? ACCENT : undefined }}
             >
-              <FaRandom />
+              <FaRedo />
+              {repeat === "one" && <span style={{ fontSize: "0.6em", marginLeft: 2 }}>1</span>}
             </DialogButton>
             <DialogButton onClick={() => skip(-1)} style={MINI_BUTTON_STYLE}>
               <FaStepBackward />
+            </DialogButton>
+            <DialogButton onClick={togglePause} style={MINI_BUTTON_STYLE}>
+              {isPlaying ? <FaPause /> : <FaPlay />}
             </DialogButton>
             <DialogButton onClick={() => skip(1)} style={MINI_BUTTON_STYLE}>
               <FaStepForward />
             </DialogButton>
             <DialogButton
-              onClick={cycleRepeat}
-              style={{
-                ...MINI_BUTTON_STYLE,
-                color: repeat !== "off" ? ACCENT : undefined,
-              }}
+              onClick={toggleShuffle}
+              style={{ ...MINI_BUTTON_STYLE, color: shuffle ? ACCENT : undefined }}
             >
-              <FaRedo />
-              {repeat === "one" && (
-                <span style={{ fontSize: "0.6em", marginLeft: 2 }}>1</span>
-              )}
+              <FaRandom />
             </DialogButton>
           </Focusable>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%" }}>
+            <Thumb src={getImageUrl(currentTrackId ?? "")} fallback={<FaMusic />} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontWeight: "bold",
+                fontSize: "0.9em",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                color: ACCENT,
+              }}>
+                {nowPlaying}
+              </div>
+              {(nowPlayingArtist || nowPlayingAlbum) && (
+                <div style={{
+                  fontSize: "0.75em",
+                  opacity: 0.7,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}>
+                  {[nowPlayingArtist, nowPlayingAlbum].filter(Boolean).join(" • ")}
+                </div>
+              )}
+            </div>
+          </div>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <div style={{ width: "100%", paddingBottom: 2 }}>
+            <div
+              style={{
+                background: "rgba(255,255,255,0.15)",
+                borderRadius: 3,
+                height: 4,
+                cursor: "pointer",
+                position: "relative",
+              }}
+              onClick={seek}
+            >
+              <div style={{
+                background: ACCENT,
+                borderRadius: 3,
+                height: "100%",
+                width: `${progress * 100}%`,
+                transition: "width 0.3s linear",
+              }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.7em", opacity: 0.6, marginTop: 2 }}>
+              <span>{fmtTime(currentTime)}</span>
+              <span>{fmtTime(trackDuration)}</span>
+            </div>
+          </div>
         </PanelSectionRow>
       </>
     );

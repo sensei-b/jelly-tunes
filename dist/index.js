@@ -171,6 +171,10 @@ function Content() {
     const [currentTrackId, setCurrentTrackId] = SP_REACT.useState(null);
     const [shuffle, setShuffle] = SP_REACT.useState(false);
     const [repeat, setRepeat] = SP_REACT.useState("off");
+    const [nowPlayingArtist, setNowPlayingArtist] = SP_REACT.useState(null);
+    const [nowPlayingAlbum, setNowPlayingAlbum] = SP_REACT.useState(null);
+    const [currentTime, setCurrentTime] = SP_REACT.useState(0);
+    const [trackDuration, setTrackDuration] = SP_REACT.useState(0);
     const [artistSearch, setArtistSearch] = SP_REACT.useState("");
     // Playback queue lives in refs so the audio element's `onended`
     // callback always sees the latest values without re-binding.
@@ -203,11 +207,27 @@ function Content() {
         })();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+    SP_REACT.useEffect(() => {
+        if (!isPlaying) return;
+        const id = setInterval(() => {
+            if (globalAudio) {
+                setCurrentTime(globalAudio.currentTime);
+                setTrackDuration(isFinite(globalAudio.duration) ? globalAudio.duration : 0);
+            }
+        }, 500);
+        return () => clearInterval(id);
+    }, [isPlaying]);
     // -- Artwork helper -------------------------------------------
     const getImageUrl = (id) => {
         if (!serverUrl || !apiKey || !id)
             return "";
         return `${serverUrl}/Items/${id}/Images/Primary?fillWidth=64&fillHeight=64&quality=80&api_key=${apiKey}`;
+    };
+    const fmtTime = (s) => {
+        if (!isFinite(s) || s < 0) return "0:00";
+        const m = Math.floor(s / 60);
+        const sec = Math.floor(s % 60);
+        return `${m}:${sec.toString().padStart(2, "0")}`;
     };
     // -- Search -----------------------------------------------------
     const filteredArtists = artistSearch.trim()
@@ -276,6 +296,8 @@ function Content() {
             globalAudio.pause();
             globalAudio = null;
         }
+        setCurrentTime(0);
+        setTrackDuration(0);
         queueIndexRef.current = index;
         globalAudio = new Audio(url);
         globalAudio.onended = () => handleTrackEnded();
@@ -352,6 +374,8 @@ function Content() {
     // Tapping a track loads the whole current album as the queue,
     // starting playback from that track.
     const playTrack = (track) => {
+        setNowPlayingArtist(selectedArtist?.Name ?? null);
+        setNowPlayingAlbum(selectedAlbum?.Name ?? null);
         const index = tracks.findIndex((t) => t.Id === track.Id);
         queueRef.current = tracks;
         playQueueIndex(index >= 0 ? index : 0);
@@ -391,18 +415,39 @@ function Content() {
     const NowPlaying = () => {
         if (!nowPlaying)
             return null;
-        return (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.ButtonItem, { layout: "below", icon: SP_JSX.jsx(Thumb, { src: getImageUrl(currentTrackId ?? ""), fallback: SP_JSX.jsx(FaMusic, {}) }), onClick: togglePause, children: [isPlaying ? SP_JSX.jsx(FaPause, {}) : SP_JSX.jsx(FaPlay, {}), " ", nowPlaying] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.Focusable, { style: {
-                            display: "flex",
-                            flexDirection: "row",
-                            gap: "4px",
-                            width: "100%",
-                        }, children: [SP_JSX.jsx(DFL.DialogButton, { onClick: toggleShuffle, style: {
-                                    ...MINI_BUTTON_STYLE,
-                                    color: shuffle ? ACCENT : undefined,
-                                }, children: SP_JSX.jsx(FaRandom, {}) }), SP_JSX.jsx(DFL.DialogButton, { onClick: () => skip(-1), style: MINI_BUTTON_STYLE, children: SP_JSX.jsx(FaStepBackward, {}) }), SP_JSX.jsx(DFL.DialogButton, { onClick: () => skip(1), style: MINI_BUTTON_STYLE, children: SP_JSX.jsx(FaStepForward, {}) }), SP_JSX.jsxs(DFL.DialogButton, { onClick: cycleRepeat, style: {
-                                    ...MINI_BUTTON_STYLE,
-                                    color: repeat !== "off" ? ACCENT : undefined,
-                                }, children: [SP_JSX.jsx(FaRedo, {}), repeat === "one" && (SP_JSX.jsx("span", { style: { fontSize: "0.6em", marginLeft: 2 }, children: "1" }))] })] }) })] }));
+        const progress = trackDuration > 0 ? currentTime / trackDuration : 0;
+        const seek = (e) => {
+            if (!globalAudio || !trackDuration) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            globalAudio.currentTime = ratio * trackDuration;
+            setCurrentTime(globalAudio.currentTime);
+        };
+        return (SP_JSX.jsxs(SP_JSX.Fragment, { children: [
+            SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.Focusable, { style: { display: "flex", flexDirection: "row", gap: "4px", width: "100%" }, children: [
+                SP_JSX.jsxs(DFL.DialogButton, { onClick: cycleRepeat, style: { ...MINI_BUTTON_STYLE, color: repeat !== "off" ? ACCENT : undefined }, children: [SP_JSX.jsx(FaRedo, {}), repeat === "one" && SP_JSX.jsx("span", { style: { fontSize: "0.6em", marginLeft: 2 }, children: "1" })] }),
+                SP_JSX.jsx(DFL.DialogButton, { onClick: () => skip(-1), style: MINI_BUTTON_STYLE, children: SP_JSX.jsx(FaStepBackward, {}) }),
+                SP_JSX.jsx(DFL.DialogButton, { onClick: togglePause, style: MINI_BUTTON_STYLE, children: isPlaying ? SP_JSX.jsx(FaPause, {}) : SP_JSX.jsx(FaPlay, {}) }),
+                SP_JSX.jsx(DFL.DialogButton, { onClick: () => skip(1), style: MINI_BUTTON_STYLE, children: SP_JSX.jsx(FaStepForward, {}) }),
+                SP_JSX.jsx(DFL.DialogButton, { onClick: toggleShuffle, style: { ...MINI_BUTTON_STYLE, color: shuffle ? ACCENT : undefined }, children: SP_JSX.jsx(FaRandom, {}) })
+            ] }) }),
+            SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 10, width: "100%" }, children: [
+                SP_JSX.jsx(Thumb, { src: getImageUrl(currentTrackId ?? ""), fallback: SP_JSX.jsx(FaMusic, {}) }),
+                SP_JSX.jsxs("div", { style: { flex: 1, minWidth: 0 }, children: [
+                    SP_JSX.jsx("div", { style: { fontWeight: "bold", fontSize: "0.9em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: ACCENT }, children: nowPlaying }),
+                    (nowPlayingArtist || nowPlayingAlbum) && SP_JSX.jsx("div", { style: { fontSize: "0.75em", opacity: 0.7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: [nowPlayingArtist, nowPlayingAlbum].filter(Boolean).join(" • ") })
+                ] })
+            ] }) }),
+            SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { width: "100%", paddingBottom: 2 }, children: [
+                SP_JSX.jsx("div", { style: { background: "rgba(255,255,255,0.15)", borderRadius: 3, height: 4, cursor: "pointer", position: "relative" }, onClick: seek, children:
+                    SP_JSX.jsx("div", { style: { background: ACCENT, borderRadius: 3, height: "100%", width: `${progress * 100}%`, transition: "width 0.3s linear" } })
+                }),
+                SP_JSX.jsxs("div", { style: { display: "flex", justifyContent: "space-between", fontSize: "0.7em", opacity: 0.6, marginTop: 2 }, children: [
+                    SP_JSX.jsx("span", { children: fmtTime(currentTime) }),
+                    SP_JSX.jsx("span", { children: fmtTime(trackDuration) })
+                ] })
+            ] }) })
+        ] }));
     };
     const ErrorRow = () => error ? (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { color: "#ff6b6b", padding: "4px 0" }, children: friendlyError(error) }) })) : null;
     // -- Settings view ------------------------------------------------
