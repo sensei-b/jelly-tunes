@@ -413,17 +413,23 @@ class Plugin:
                 return web.Response(status=503, text="Not configured")
 
             base = await self._resolve_url(cfg)
+            # /universal returns 400 on some Jellyfin instances; /stream?Static=true
+            # serves the original file directly and is supported universally.
             upstream = (
-                f"{base}/Audio/{item_id}/universal"
+                f"{base}/Audio/{item_id}/stream"
                 f"?api_key={cfg['api_key']}"
-                f"&DeviceId=JellyTunes"
-                f"&Container=opus,mp3,aac,m4a,flac,ogg,wav"
-                f"&TranscodingContainer=mp3"
-                f"&AudioCodec=mp3"
-                f"&MaxStreamingBitrate=140000000"
+                f"&Static=true"
             )
 
-            req_headers = {}
+            req_headers = {
+                # Cloudflare (if present in front of Jellyfin) blocks requests
+                # without a browser-like User-Agent on the audio stream path.
+                "User-Agent": (
+                    "Mozilla/5.0 (X11; Linux x86_64; Valve Steam Client/Steam Deck)"
+                    " AppleWebKit/537.36 (KHTML, like Gecko)"
+                    " Chrome/126.0.6478.183 Safari/537.36"
+                ),
+            }
             if "Range" in request.headers:
                 req_headers["Range"] = request.headers["Range"]
 
