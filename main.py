@@ -58,7 +58,7 @@ class Plugin:
         """UDP broadcast on port 7359 to find a Jellyfin server on the LAN."""
         import socket
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         response_data: list[bytes] = []
         received = asyncio.Event()
 
@@ -67,6 +67,7 @@ class Plugin:
                 response_data.append(data)
                 received.set()
             def error_received(self, exc):
+                decky.logger.warning(f"UDP discovery socket error: {exc}")
                 received.set()
             def connection_lost(self, exc):
                 received.set()
@@ -78,10 +79,11 @@ class Plugin:
                 allow_broadcast=True,
             )
             transport.sendto(b"who is JellyfinServer?", ("255.255.255.255", 7359))
+            decky.logger.info("UDP discovery broadcast sent on port 7359")
             try:
                 await asyncio.wait_for(received.wait(), timeout=2.0)
             except asyncio.TimeoutError:
-                pass
+                decky.logger.info("UDP discovery timed out — no Jellyfin server responded")
             finally:
                 transport.close()
 
@@ -89,37 +91,49 @@ class Plugin:
                 info = json.loads(response_data[0].decode("utf-8", errors="ignore"))
                 addr = info.get("Address", "").rstrip("/")
                 if addr:
-                    decky.logger.info(f"Discovered local Jellyfin at {addr}")
+                    decky.logger.info(f"UDP discovery found Jellyfin at {addr}")
                     return addr
+                decky.logger.warning(f"UDP discovery got response but no Address field: {info}")
         except Exception as e:
-            decky.logger.warning(f"Local discovery error: {e}")
+            decky.logger.warning(f"UDP discovery error: {e}")
         return None
 
     async def _resolve_url(self, cfg: dict) -> str:
-        """Probe the configured URL; fall back to LAN discovery if unreachable."""
+        """Probe the configured URL for a valid Jellyfin response; fall back to LAN discovery."""
         if self._url_cache is not None:
             return self._url_cache
 
         main_url = cfg["server_url"]
         ssl_ctx = False if cfg.get("skip_ssl_verify") else SSL_CONTEXT
 
+        # Validate by fetching /System/Info/Public and checking the JSON response
+        # contains a Jellyfin-specific field. A plain status check isn't enough —
+        # some routers intercept the request and return 200/302 from their own UI.
         try:
             connector = aiohttp.TCPConnector(ssl=ssl_ctx)
             timeout = aiohttp.ClientTimeout(total=3.0)
             async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-                async with session.head(f"{main_url}/System/Info/Public") as resp:
-                    if resp.status < 500:
-                        decky.logger.info(f"Using configured URL: {main_url}")
-                        self._url_cache = main_url
-                        return main_url
-        except Exception:
-            pass
+                async with session.get(f"{main_url}/System/Info/Public") as resp:
+                    decky.logger.info(f"Probe {main_url}/System/Info/Public → {resp.status}")
+                    if resp.status == 200:
+                        try:
+                            body = await resp.json(content_type=None)
+                            if isinstance(body, dict) and "ProductName" in body:
+                                decky.logger.info(f"Configured URL is reachable, using {main_url}")
+                                self._url_cache = main_url
+                                return main_url
+                            decky.logger.warning(f"Probe returned 200 but not Jellyfin JSON: {str(body)[:100]}")
+                        except Exception as e:
+                            decky.logger.warning(f"Probe response not valid JSON: {e}")
+        except Exception as e:
+            decky.logger.info(f"Probe failed ({type(e).__name__}: {e}), trying LAN discovery")
 
         local = await self._discover_local_server()
         if local:
             self._url_cache = local
             return local
 
+        decky.logger.warning(f"LAN discovery found nothing, falling back to {main_url}")
         self._url_cache = main_url
         return main_url
 
