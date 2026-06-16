@@ -32,6 +32,17 @@ interface JellyfinItem {
   Name: string;
   ProductionYear?: number;
   IndexNumber?: number;
+  Type?: string;
+  Album?: string;
+  AlbumArtist?: string;
+  AlbumId?: string;
+}
+
+interface SearchResults {
+  artists: JellyfinItem[];
+  albums: JellyfinItem[];
+  tracks: JellyfinItem[];
+  error?: string;
 }
 
 interface ItemsResult {
@@ -50,6 +61,11 @@ interface JellySettings {
 type View = "artists" | "albums" | "tracks" | "settings";
 type RepeatMode = "off" | "all" | "one";
 
+interface BreadcrumbSegment {
+  label: string;
+  onClick?: () => void;
+}
+
 // -- Backend calls ----------------------------------------------------
 
 const getSettings = callable<[], JellySettings>("get_settings");
@@ -61,6 +77,7 @@ const getArtists = callable<[], ItemsResult>("get_artists");
 const getAlbums = callable<[artist_id: string], ItemsResult>("get_albums");
 const getTracks = callable<[album_id: string], ItemsResult>("get_tracks");
 const getStreamUrl = callable<[item_id: string], string>("get_stream_url");
+const searchAll = callable<[query: string], SearchResults>("search_all");
 
 // Single shared audio element so playback survives view changes
 let globalAudio: HTMLAudioElement | null = null;
@@ -93,6 +110,7 @@ const THUMB_STYLE: React.CSSProperties = {
   borderRadius: 4,
   objectFit: "cover",
   flexShrink: 0,
+  display: "block",
 };
 
 const THUMB_FALLBACK_STYLE: React.CSSProperties = {
@@ -270,6 +288,91 @@ function NowPlaying({
   );
 }
 
+function Breadcrumb({ segments }: { segments: BreadcrumbSegment[] }) {
+  return (
+    <PanelSectionRow>
+      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 6px", padding: "2px 0", fontSize: "0.82em" }}>
+        {segments.flatMap((seg, i) => {
+          const el = seg.onClick ? (
+            <button
+              key={`s${i}`}
+              onClick={seg.onClick}
+              style={{
+                background: "none", border: "none", color: ACCENT, cursor: "pointer",
+                padding: 0, fontSize: "inherit", fontFamily: "inherit",
+                maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}
+            >
+              {seg.label}
+            </button>
+          ) : (
+            <span
+              key={`s${i}`}
+              style={{ opacity: 0.75, maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-block" }}
+            >
+              {seg.label}
+            </span>
+          );
+          return i === 0 ? [el] : [<span key={`sep${i}`} style={{ opacity: 0.4 }}>›</span>, el];
+        })}
+      </div>
+    </PanelSectionRow>
+  );
+}
+
+interface BrowseListProps {
+  title: string;
+  breadcrumbs: BreadcrumbSegment[];
+  nowPlayingProps: NowPlayingProps | null;
+  error: string | null;
+  searchValue: string;
+  onSearchChange: (v: string) => void;
+  searchLabel: string;
+  items: JellyfinItem[];
+  filteredItems: JellyfinItem[];
+  emptyLabel: string;
+  noMatchLabel: string;
+  renderItem: (item: JellyfinItem) => ReactNode;
+}
+
+function BrowseList({
+  title, breadcrumbs, nowPlayingProps, error,
+  searchValue, onSearchChange, searchLabel,
+  items, filteredItems, emptyLabel, noMatchLabel,
+  renderItem,
+}: BrowseListProps) {
+  return (
+    <PanelSection title={title}>
+      {error && (
+        <PanelSectionRow>
+          <div style={{ color: "#ff6b6b", padding: "4px 0" }}>{friendlyError(error)}</div>
+        </PanelSectionRow>
+      )}
+      <Breadcrumb segments={breadcrumbs} />
+      {nowPlayingProps && <NowPlaying {...nowPlayingProps} />}
+      <PanelSectionRow>
+        <TextField
+          label={searchLabel}
+          value={searchValue}
+          onChange={(e) => onSearchChange(e.target.value)}
+          bShowClearAction
+          bAlwaysShowClearAction={searchValue.length > 0}
+        />
+      </PanelSectionRow>
+      {filteredItems.map(renderItem)}
+      {items.length === 0 && <PanelSectionRow>{emptyLabel}</PanelSectionRow>}
+      {items.length > 0 && filteredItems.length === 0 && (
+        <PanelSectionRow>{noMatchLabel}</PanelSectionRow>
+      )}
+    </PanelSection>
+  );
+}
+
+function filterByName<T extends { Name: string }>(items: T[], search: string): T[] {
+  const term = search.trim().toLowerCase();
+  return term ? items.filter((i) => i.Name.toLowerCase().includes(term)) : items;
+}
+
 function Content() {
   const [view, setView] = useState<View>("artists");
   const [loading, setLoading] = useState(true);
@@ -293,7 +396,11 @@ function Content() {
   const [currentTime, setCurrentTime] = useState(0);
   const [trackDuration, setTrackDuration] = useState(0);
 
-  const [artistSearch, setArtistSearch] = useState("");
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResults | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [albumSearch, setAlbumSearch] = useState("");
+  const [trackSearch, setTrackSearch] = useState("");
 
   // Playback queue lives in refs so the audio element's `onended`
   // callback always sees the latest values without re-binding.
@@ -365,12 +472,25 @@ function Content() {
     return () => clearInterval(id);
   }, [isPlaying]);
 
+  useEffect(() => {
+    const term = globalSearch.trim();
+    if (term.length < 2) {
+      setSearchResults(null);
+      setSearchLoading(false);
+      return;
+    }
+    setSearchLoading(true);
+    const timeout = setTimeout(async () => {
+      const result = await searchAll(term);
+      setSearchResults(result);
+      setSearchLoading(false);
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [globalSearch]);
+
   // -- Search -----------------------------------------------------
-  const filteredArtists = artistSearch.trim()
-    ? artists.filter((a) =>
-        a.Name.toLowerCase().includes(artistSearch.trim().toLowerCase())
-      )
-    : artists;
+  const filteredAlbums = filterByName(albums, albumSearch);
+  const filteredTracks = filterByName(tracks, trackSearch);
 
   // -- Data loaders -------------------------------------------
   const loadArtists = async () => {
@@ -396,6 +516,7 @@ function Content() {
       return;
     }
     setAlbums(result.items ?? []);
+    setAlbumSearch("");
     setView("albums");
   };
 
@@ -410,6 +531,7 @@ function Content() {
       return;
     }
     setTracks(result.items ?? []);
+    setTrackSearch("");
     setView("tracks");
   };
 
@@ -540,6 +662,34 @@ function Content() {
     queueRef.current = tracks;
     globalQueue = tracks;
     playQueueIndex(index >= 0 ? index : 0);
+  };
+
+  const playAlbum = async (album: JellyfinItem) => {
+    const result = await getTracks(album.Id);
+    if (!result.items?.length) return;
+    const albumTracks = result.items;
+    const artistName = selectedArtist?.Name ?? null;
+    setSelectedAlbum(album);
+    setTracks(albumTracks);
+    setNowPlayingArtist(artistName);
+    setNowPlayingAlbum(album.Name);
+    globalNowPlayingArtist = artistName;
+    globalNowPlayingAlbum = album.Name;
+    queueRef.current = albumTracks;
+    globalQueue = albumTracks;
+    playQueueIndex(0);
+  };
+
+  const playSearchTrack = (track: JellyfinItem) => {
+    const artist = track.AlbumArtist ?? null;
+    const album = track.Album ?? null;
+    setNowPlayingArtist(artist);
+    setNowPlayingAlbum(album);
+    globalNowPlayingArtist = artist;
+    globalNowPlayingAlbum = album;
+    queueRef.current = [track];
+    globalQueue = [track];
+    playQueueIndex(0);
   };
 
   const togglePause = () => {
@@ -685,45 +835,72 @@ function Content() {
   // -- Albums view ------------------------------------------------------
   if (view === "albums") {
     return (
-      <PanelSection title={selectedArtist?.Name ?? "Albums"}>
-        <ErrorRow />
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={() => setView("artists")}>
-            <FaArrowLeft /> Artists
-          </ButtonItem>
-        </PanelSectionRow>
-        {nowPlayingProps && <NowPlaying {...nowPlayingProps} />}
-        {albums.map((album) => (
+      <BrowseList
+        title={selectedArtist?.Name ?? "Albums"}
+        breadcrumbs={[
+          { label: "Artists", onClick: () => setView("artists") },
+          ...(selectedArtist ? [{ label: selectedArtist.Name }] : []),
+        ]}
+        nowPlayingProps={nowPlayingProps}
+        error={error}
+        searchValue={albumSearch}
+        onSearchChange={setAlbumSearch}
+        searchLabel="Search albums"
+        items={albums}
+        filteredItems={filteredAlbums}
+        emptyLabel="No albums found for this artist."
+        noMatchLabel={`No albums match "${albumSearch}".`}
+        renderItem={(album) => (
           <PanelSectionRow key={album.Id}>
-            <ButtonItem
-              layout="below"
-              icon={<Thumb src={thumbUrl(album.Id)} fallback={<FaMusic />} />}
-              onClick={() => openTracks(album)}
+            <Focusable
+              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+              // @ts-ignore
+              flow-children="row"
+              style={{ display: "flex", gap: 4, width: "100%" }}
             >
-              {album.Name}
-              {album.ProductionYear ? ` (${album.ProductionYear})` : ""}
-            </ButtonItem>
+              <DialogButton
+                style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-start" }}
+                onClick={() => openTracks(album)}
+              >
+                <Thumb src={thumbUrl(album.Id)} fallback={<FaMusic />} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {album.Name}
+                  {album.ProductionYear ? ` (${album.ProductionYear})` : ""}
+                </span>
+              </DialogButton>
+              <DialogButton
+                style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px" }}
+                onClick={() => playAlbum(album)}
+              >
+                <FaPlay />
+              </DialogButton>
+            </Focusable>
           </PanelSectionRow>
-        ))}
-        {albums.length === 0 && (
-          <PanelSectionRow>No albums found for this artist.</PanelSectionRow>
         )}
-      </PanelSection>
+      />
     );
   }
 
   // -- Tracks view -------------------------------------------------------
   if (view === "tracks") {
     return (
-      <PanelSection title={selectedAlbum?.Name ?? "Tracks"}>
-        <ErrorRow />
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={() => setView("albums")}>
-            <FaArrowLeft /> Albums
-          </ButtonItem>
-        </PanelSectionRow>
-        {nowPlayingProps && <NowPlaying {...nowPlayingProps} />}
-        {tracks.map((track) => (
+      <BrowseList
+        title={selectedAlbum?.Name ?? "Tracks"}
+        breadcrumbs={[
+          { label: "Artists", onClick: () => setView("artists") },
+          ...(selectedArtist ? [{ label: selectedArtist.Name, onClick: () => setView("albums") }] : []),
+          ...(selectedAlbum ? [{ label: selectedAlbum.Name }] : []),
+        ]}
+        nowPlayingProps={nowPlayingProps}
+        error={error}
+        searchValue={trackSearch}
+        onSearchChange={setTrackSearch}
+        searchLabel="Search tracks"
+        items={tracks}
+        filteredItems={filteredTracks}
+        emptyLabel="No tracks found on this album."
+        noMatchLabel={`No tracks match "${trackSearch}".`}
+        renderItem={(track) => (
           <PanelSectionRow key={track.Id}>
             <ButtonItem
               layout="below"
@@ -736,13 +913,18 @@ function Content() {
               </span>
             </ButtonItem>
           </PanelSectionRow>
-        ))}
-        {tracks.length === 0 && (
-          <PanelSectionRow>No tracks found on this album.</PanelSectionRow>
         )}
-      </PanelSection>
+      />
     );
   }
+
+  const SearchSectionLabel = ({ label }: { label: string }) => (
+    <PanelSectionRow>
+      <div style={{ fontSize: "0.75em", opacity: 0.5, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        {label}
+      </div>
+    </PanelSectionRow>
+  );
 
   // -- Artists view (default) -------------------------------------------
   return (
@@ -750,38 +932,122 @@ function Content() {
       <ErrorRow />
       {nowPlayingProps && <NowPlaying {...nowPlayingProps} />}
       <PanelSectionRow>
-        <TextField
-          label="Search artists"
-          value={artistSearch}
-          onChange={(e) => setArtistSearch(e.target.value)}
-          bShowClearAction
-          bAlwaysShowClearAction={artistSearch.length > 0}
-        />
-      </PanelSectionRow>
-      {filteredArtists.map((artist) => (
-        <PanelSectionRow key={artist.Id}>
-          <ButtonItem
-            layout="below"
-            icon={<Thumb src={thumbUrl(artist.Id)} fallback={<FaMusic />} />}
-            onClick={() => openAlbums(artist)}
-          >
-            {artist.Name}
-          </ButtonItem>
-        </PanelSectionRow>
-      ))}
-      {artists.length === 0 && !error && (
-        <PanelSectionRow>No artists found in your library.</PanelSectionRow>
-      )}
-      {artists.length > 0 && filteredArtists.length === 0 && (
-        <PanelSectionRow>
-          No artists match &quot;{artistSearch}&quot;.
-        </PanelSectionRow>
-      )}
-      <PanelSectionRow>
         <ButtonItem layout="below" onClick={() => setView("settings")}>
           <FaCog /> Settings
         </ButtonItem>
       </PanelSectionRow>
+      <PanelSectionRow>
+        <TextField
+          label="Search artists, albums & songs"
+          value={globalSearch}
+          onChange={(e) => setGlobalSearch(e.target.value)}
+          bShowClearAction
+          bAlwaysShowClearAction={globalSearch.length > 0}
+        />
+      </PanelSectionRow>
+      {globalSearch.trim().length >= 2 ? (
+        <>
+          {searchLoading && <PanelSectionRow>Searching...</PanelSectionRow>}
+          {!searchLoading && searchResults && (
+            <>
+              {searchResults.artists.length > 0 && (
+                <>
+                  <SearchSectionLabel label="Artists" />
+                  {searchResults.artists.map((artist) => (
+                    <PanelSectionRow key={artist.Id}>
+                      <ButtonItem
+                        layout="below"
+                        icon={<Thumb src={thumbUrl(artist.Id)} fallback={<FaMusic />} />}
+                        onClick={() => openAlbums(artist)}
+                      >
+                        {artist.Name}
+                      </ButtonItem>
+                    </PanelSectionRow>
+                  ))}
+                </>
+              )}
+              {searchResults.albums.length > 0 && (
+                <>
+                  <SearchSectionLabel label="Albums" />
+                  {searchResults.albums.map((album) => (
+                    <PanelSectionRow key={album.Id}>
+                      <Focusable
+                        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                        // @ts-ignore
+                        flow-children="row"
+                        style={{ display: "flex", gap: 4, width: "100%" }}
+                      >
+                        <DialogButton
+                          style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-start" }}
+                          onClick={() => openTracks(album)}
+                        >
+                          <Thumb src={thumbUrl(album.Id)} fallback={<FaMusic />} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {album.Name}
+                            {album.ProductionYear ? ` (${album.ProductionYear})` : ""}
+                          </span>
+                        </DialogButton>
+                        <DialogButton
+                          style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px" }}
+                          onClick={() => playAlbum(album)}
+                        >
+                          <FaPlay />
+                        </DialogButton>
+                      </Focusable>
+                    </PanelSectionRow>
+                  ))}
+                </>
+              )}
+              {searchResults.tracks.length > 0 && (
+                <>
+                  <SearchSectionLabel label="Songs" />
+                  {searchResults.tracks.map((track) => (
+                    <PanelSectionRow key={track.Id}>
+                      <ButtonItem
+                        layout="below"
+                        icon={<Thumb src={thumbUrl(track.Id)} fallback={<FaMusic />} />}
+                        onClick={() => playSearchTrack(track)}
+                      >
+                        <span style={{ color: track.Id === currentTrackId ? ACCENT : undefined }}>
+                          {track.Name}
+                        </span>
+                      </ButtonItem>
+                    </PanelSectionRow>
+                  ))}
+                </>
+              )}
+              {!searchResults.error &&
+                searchResults.artists.length === 0 &&
+                searchResults.albums.length === 0 &&
+                searchResults.tracks.length === 0 && (
+                  <PanelSectionRow>
+                    No results for &quot;{globalSearch.trim()}&quot;.
+                  </PanelSectionRow>
+                )}
+              {searchResults.error && (
+                <PanelSectionRow>Search failed — check your connection.</PanelSectionRow>
+              )}
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          {artists.map((artist) => (
+            <PanelSectionRow key={artist.Id}>
+              <ButtonItem
+                layout="below"
+                icon={<Thumb src={thumbUrl(artist.Id)} fallback={<FaMusic />} />}
+                onClick={() => openAlbums(artist)}
+              >
+                {artist.Name}
+              </ButtonItem>
+            </PanelSectionRow>
+          ))}
+          {artists.length === 0 && !error && (
+            <PanelSectionRow>No artists found in your library.</PanelSectionRow>
+          )}
+        </>
+      )}
     </PanelSection>
   );
 }

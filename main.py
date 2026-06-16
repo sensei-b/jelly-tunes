@@ -399,6 +399,30 @@ class Plugin:
             return result2
         return {"items": result2["data"].get("Items", [])}
 
+    async def search_all(self, query: str):
+        query = query.strip()
+        if not query:
+            return {"artists": [], "albums": [], "tracks": []}
+        cfg = _load_settings()
+        params = {
+            "SearchTerm": query,
+            "IncludeItemTypes": "MusicArtist,MusicAlbum,Audio",
+            "Recursive": "true",
+            "Limit": 40,
+            "SortBy": "SortName",
+        }
+        result = await self._get(f"/Users/{cfg['user_id']}/Items", params)
+        if "error" in result or not result["data"].get("Items"):
+            result = await self._get("/Items", params)
+        if "error" in result:
+            return result
+        items = result["data"].get("Items", [])
+        return {
+            "artists": [i for i in items if i.get("Type") == "MusicArtist"],
+            "albums": [i for i in items if i.get("Type") == "MusicAlbum"],
+            "tracks": [i for i in items if i.get("Type") == "Audio"],
+        }
+
     # -- Playback -----------------------------------------------------
     async def get_stream_url(self, item_id: str):
         cfg = _load_settings()
