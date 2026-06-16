@@ -63,6 +63,14 @@ const getStreamUrl = callable<[item_id: string], string>("get_stream_url");
 
 // Single shared audio element so playback survives view changes
 let globalAudio: HTMLAudioElement | null = null;
+let globalNowPlaying: string | null = null;
+let globalCurrentTrackId: string | null = null;
+let globalNowPlayingArtist: string | null = null;
+let globalNowPlayingAlbum: string | null = null;
+let globalQueue: JellyfinItem[] = [];
+let globalQueueIndex: number = -1;
+let globalShuffle: boolean = false;
+let globalRepeat: RepeatMode = "off";
 
 const ERROR_MESSAGES: Record<string, string> = {
   not_configured: "Add your Jellyfin server details in Settings first.",
@@ -148,10 +156,10 @@ function Content() {
 
   // Playback queue lives in refs so the audio element's `onended`
   // callback always sees the latest values without re-binding.
-  const queueRef = useRef<JellyfinItem[]>([]);
-  const queueIndexRef = useRef<number>(-1);
-  const shuffleRef = useRef(false);
-  const repeatRef = useRef<RepeatMode>("off");
+  const queueRef = useRef<JellyfinItem[]>(globalQueue);
+  const queueIndexRef = useRef<number>(globalQueueIndex);
+  const shuffleRef = useRef(globalShuffle);
+  const repeatRef = useRef<RepeatMode>(globalRepeat);
 
   // Settings form state
   const [serverUrl, setServerUrl] = useState("");
@@ -163,6 +171,26 @@ function Content() {
 
   // -- Load settings + initial library on mount --------------
   useEffect(() => {
+    if (globalAudio && globalNowPlaying) {
+      setNowPlaying(globalNowPlaying);
+      setCurrentTrackId(globalCurrentTrackId);
+      setIsPlaying(!globalAudio.paused);
+      setNowPlayingArtist(globalNowPlayingArtist);
+      setNowPlayingAlbum(globalNowPlayingAlbum);
+      setShuffle(globalShuffle);
+      setRepeat(globalRepeat);
+      setCurrentTime(globalAudio.currentTime);
+      setTrackDuration(isFinite(globalAudio.duration) ? globalAudio.duration : 0);
+      globalAudio.onended = () => handleTrackEnded();
+      globalAudio.onerror = () => {
+        setIsPlaying(false);
+        setNowPlaying(null);
+        setCurrentTrackId(null);
+        globalNowPlaying = null;
+        globalCurrentTrackId = null;
+        setError("playback_failed");
+      };
+    }
     (async () => {
       const cfg = await getSettings();
       setServerUrl(cfg.server_url);
@@ -268,6 +296,8 @@ function Content() {
     const queue = queueRef.current;
     if (index < 0 || index >= queue.length) {
       setIsPlaying(false);
+      globalNowPlaying = null;
+      globalCurrentTrackId = null;
       return;
     }
 
@@ -288,6 +318,7 @@ function Content() {
     setCurrentTime(0);
     setTrackDuration(0);
     queueIndexRef.current = index;
+    globalQueueIndex = index;
 
     globalAudio = new Audio(url);
     globalAudio.onended = () => handleTrackEnded();
@@ -295,6 +326,8 @@ function Content() {
       setIsPlaying(false);
       setNowPlaying(null);
       setCurrentTrackId(null);
+      globalNowPlaying = null;
+      globalCurrentTrackId = null;
       setError("playback_failed");
     };
 
@@ -302,12 +335,16 @@ function Content() {
       setIsPlaying(false);
       setNowPlaying(null);
       setCurrentTrackId(null);
+      globalNowPlaying = null;
+      globalCurrentTrackId = null;
       setError("connection_failed");
     });
     setNowPlaying(track.Name);
     setCurrentTrackId(track.Id);
     setIsPlaying(true);
     setError(null);
+    globalNowPlaying = track.Name;
+    globalCurrentTrackId = track.Id;
   };
 
   // Called when the current track finishes - decides what plays next
@@ -340,6 +377,8 @@ function Content() {
       playQueueIndex(0);
     } else {
       setIsPlaying(false);
+      globalNowPlaying = null;
+      globalCurrentTrackId = null;
     }
   };
 
@@ -369,10 +408,15 @@ function Content() {
   // Tapping a track loads the whole current album as the queue,
   // starting playback from that track.
   const playTrack = (track: JellyfinItem) => {
-    setNowPlayingArtist(selectedArtist?.Name ?? null);
-    setNowPlayingAlbum(selectedAlbum?.Name ?? null);
+    const artistName = selectedArtist?.Name ?? null;
+    const albumName = selectedAlbum?.Name ?? null;
+    setNowPlayingArtist(artistName);
+    setNowPlayingAlbum(albumName);
+    globalNowPlayingArtist = artistName;
+    globalNowPlayingAlbum = albumName;
     const index = tracks.findIndex((t) => t.Id === track.Id);
     queueRef.current = tracks;
+    globalQueue = tracks;
     playQueueIndex(index >= 0 ? index : 0);
   };
 
@@ -390,6 +434,7 @@ function Content() {
   const toggleShuffle = () => {
     shuffleRef.current = !shuffleRef.current;
     setShuffle(shuffleRef.current);
+    globalShuffle = shuffleRef.current;
   };
 
   const cycleRepeat = () => {
@@ -397,6 +442,7 @@ function Content() {
     const next = order[(order.indexOf(repeatRef.current) + 1) % order.length];
     repeatRef.current = next;
     setRepeat(next);
+    globalRepeat = next;
   };
 
   // -- Settings ---------------------------------------------------

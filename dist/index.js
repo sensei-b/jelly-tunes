@@ -109,6 +109,14 @@ const getTracks = callable("get_tracks");
 const getStreamUrl = callable("get_stream_url");
 // Single shared audio element so playback survives view changes
 let globalAudio = null;
+let globalNowPlaying = null;
+let globalCurrentTrackId = null;
+let globalNowPlayingArtist = null;
+let globalNowPlayingAlbum = null;
+let globalQueue = [];
+let globalQueueIndex = -1;
+let globalShuffle = false;
+let globalRepeat = "off";
 const ERROR_MESSAGES = {
     not_configured: "Add your Jellyfin server details in Settings first.",
     timeout: "Connection to Jellyfin timed out.",
@@ -178,10 +186,10 @@ function Content() {
     const [artistSearch, setArtistSearch] = SP_REACT.useState("");
     // Playback queue lives in refs so the audio element's `onended`
     // callback always sees the latest values without re-binding.
-    const queueRef = SP_REACT.useRef([]);
-    const queueIndexRef = SP_REACT.useRef(-1);
-    const shuffleRef = SP_REACT.useRef(false);
-    const repeatRef = SP_REACT.useRef("off");
+    const queueRef = SP_REACT.useRef(globalQueue);
+    const queueIndexRef = SP_REACT.useRef(globalQueueIndex);
+    const shuffleRef = SP_REACT.useRef(globalShuffle);
+    const repeatRef = SP_REACT.useRef(globalRepeat);
     // Settings form state
     const [serverUrl, setServerUrl] = SP_REACT.useState("");
     const [apiKey, setApiKey] = SP_REACT.useState("");
@@ -190,6 +198,26 @@ function Content() {
     const [configured, setConfigured] = SP_REACT.useState(false);
     // -- Load settings + initial library on mount --------------
     SP_REACT.useEffect(() => {
+        if (globalAudio && globalNowPlaying) {
+            setNowPlaying(globalNowPlaying);
+            setCurrentTrackId(globalCurrentTrackId);
+            setIsPlaying(!globalAudio.paused);
+            setNowPlayingArtist(globalNowPlayingArtist);
+            setNowPlayingAlbum(globalNowPlayingAlbum);
+            setShuffle(globalShuffle);
+            setRepeat(globalRepeat);
+            setCurrentTime(globalAudio.currentTime);
+            setTrackDuration(isFinite(globalAudio.duration) ? globalAudio.duration : 0);
+            globalAudio.onended = () => handleTrackEnded();
+            globalAudio.onerror = () => {
+                setIsPlaying(false);
+                setNowPlaying(null);
+                setCurrentTrackId(null);
+                globalNowPlaying = null;
+                globalCurrentTrackId = null;
+                setError("playback_failed");
+            };
+        }
         (async () => {
             const cfg = await getSettings();
             setServerUrl(cfg.server_url);
@@ -282,6 +310,8 @@ function Content() {
         const queue = queueRef.current;
         if (index < 0 || index >= queue.length) {
             setIsPlaying(false);
+            globalNowPlaying = null;
+            globalCurrentTrackId = null;
             return;
         }
         const track = queue[index];
@@ -299,24 +329,31 @@ function Content() {
         setCurrentTime(0);
         setTrackDuration(0);
         queueIndexRef.current = index;
+        globalQueueIndex = index;
         globalAudio = new Audio(url);
         globalAudio.onended = () => handleTrackEnded();
         globalAudio.onerror = () => {
             setIsPlaying(false);
             setNowPlaying(null);
             setCurrentTrackId(null);
+            globalNowPlaying = null;
+            globalCurrentTrackId = null;
             setError("playback_failed");
         };
         globalAudio.play().catch(() => {
             setIsPlaying(false);
             setNowPlaying(null);
             setCurrentTrackId(null);
+            globalNowPlaying = null;
+            globalCurrentTrackId = null;
             setError("connection_failed");
         });
         setNowPlaying(track.Name);
         setCurrentTrackId(track.Id);
         setIsPlaying(true);
         setError(null);
+        globalNowPlaying = track.Name;
+        globalCurrentTrackId = track.Id;
     };
     // Called when the current track finishes - decides what plays next
     // based on the current shuffle/repeat settings.
@@ -347,6 +384,8 @@ function Content() {
         }
         else {
             setIsPlaying(false);
+            globalNowPlaying = null;
+            globalCurrentTrackId = null;
         }
     };
     // Manual skip forward/back (honors shuffle, wraps if repeat-all)
@@ -374,10 +413,15 @@ function Content() {
     // Tapping a track loads the whole current album as the queue,
     // starting playback from that track.
     const playTrack = (track) => {
-        setNowPlayingArtist(selectedArtist?.Name ?? null);
-        setNowPlayingAlbum(selectedAlbum?.Name ?? null);
+        const artistName = selectedArtist?.Name ?? null;
+        const albumName = selectedAlbum?.Name ?? null;
+        setNowPlayingArtist(artistName);
+        setNowPlayingAlbum(albumName);
+        globalNowPlayingArtist = artistName;
+        globalNowPlayingAlbum = albumName;
         const index = tracks.findIndex((t) => t.Id === track.Id);
         queueRef.current = tracks;
+        globalQueue = tracks;
         playQueueIndex(index >= 0 ? index : 0);
     };
     const togglePause = () => {
@@ -395,12 +439,14 @@ function Content() {
     const toggleShuffle = () => {
         shuffleRef.current = !shuffleRef.current;
         setShuffle(shuffleRef.current);
+        globalShuffle = shuffleRef.current;
     };
     const cycleRepeat = () => {
         const order = ["off", "all", "one"];
         const next = order[(order.indexOf(repeatRef.current) + 1) % order.length];
         repeatRef.current = next;
         setRepeat(next);
+        globalRepeat = next;
     };
     // -- Settings ---------------------------------------------------
     const handleSaveSettings = async () => {
