@@ -148,6 +148,41 @@ function Thumb({ src, fallback }: { src: string; fallback: ReactNode }) {
   );
 }
 
+function ensureMarqueeStyle() {
+  if (document.getElementById("jt-marquee-style")) return;
+  const s = document.createElement("style");
+  s.id = "jt-marquee-style";
+  s.textContent =
+    "@keyframes jt-marquee{0%,20%{transform:translateX(0)}80%,100%{transform:translateX(var(--jt-scroll,0px))}}";
+  document.head.appendChild(s);
+}
+
+function MarqueeText({ text }: { text: string }) {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLSpanElement>(null);
+  const [scroll, setScroll] = useState(0);
+
+  useEffect(() => {
+    ensureMarqueeStyle();
+    if (outerRef.current && innerRef.current) {
+      const overflow = innerRef.current.scrollWidth - outerRef.current.clientWidth;
+      setScroll(Math.max(0, overflow));
+    }
+  }, [text]);
+
+  const innerStyle: React.CSSProperties = { display: "inline-block", whiteSpace: "nowrap" };
+  if (scroll > 0) {
+    innerStyle.animation = "jt-marquee 8s ease-in-out infinite";
+    (innerStyle as Record<string, unknown>)["--jt-scroll"] = `-${scroll}px`;
+  }
+
+  return (
+    <div ref={outerRef} style={{ overflow: "hidden", width: "100%" }}>
+      <span ref={innerRef} style={innerStyle}>{text}</span>
+    </div>
+  );
+}
+
 function thumbUrl(id: string): string {
   if (!id) return "";
   return `http://localhost:9099/image/${id}`;
@@ -856,20 +891,17 @@ function Content() {
               // eslint-disable-next-line @typescript-eslint/ban-ts-comment
               // @ts-ignore
               flow-children="row"
-              style={{ display: "flex", gap: 4, width: "100%" }}
+              style={{ display: "flex", gap: 4, width: "100%", alignItems: "center" }}
             >
+              <Thumb src={thumbUrl(album.Id)} fallback={<FaMusic />} />
               <DialogButton
-                style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-start" }}
+                style={{ flex: 1, minWidth: 0, overflow: "hidden" }}
                 onClick={() => openTracks(album)}
               >
-                <Thumb src={thumbUrl(album.Id)} fallback={<FaMusic />} />
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {album.Name}
-                  {album.ProductionYear ? ` (${album.ProductionYear})` : ""}
-                </span>
+                <MarqueeText text={album.Name + (album.ProductionYear ? ` (${album.ProductionYear})` : "")} />
               </DialogButton>
               <DialogButton
-                style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px" }}
+                style={{ width: 40, flexShrink: 0, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
                 onClick={() => playAlbum(album)}
               >
                 <FaPlay />
@@ -975,20 +1007,17 @@ function Content() {
                         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                         // @ts-ignore
                         flow-children="row"
-                        style={{ display: "flex", gap: 4, width: "100%" }}
+                        style={{ display: "flex", gap: 4, width: "100%", alignItems: "center" }}
                       >
+                        <Thumb src={thumbUrl(album.Id)} fallback={<FaMusic />} />
                         <DialogButton
-                          style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-start" }}
+                          style={{ flex: 1, minWidth: 0, overflow: "hidden" }}
                           onClick={() => openTracks(album)}
                         >
-                          <Thumb src={thumbUrl(album.Id)} fallback={<FaMusic />} />
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {album.Name}
-                            {album.ProductionYear ? ` (${album.ProductionYear})` : ""}
-                          </span>
+                          <MarqueeText text={album.Name + (album.ProductionYear ? ` (${album.ProductionYear})` : "")} />
                         </DialogButton>
                         <DialogButton
-                          style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px" }}
+                          style={{ width: 40, flexShrink: 0, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
                           onClick={() => playAlbum(album)}
                         >
                           <FaPlay />
