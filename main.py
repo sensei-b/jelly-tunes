@@ -480,8 +480,36 @@ class Plugin:
                 decky.logger.error(f"Audio proxy error for {item_id}: {e}")
                 return web.Response(status=502, text=str(e))
 
+        async def image_proxy(request):
+            item_id = request.match_info["item_id"]
+            cfg = _load_settings()
+            if not cfg["server_url"] or not cfg["api_key"]:
+                return web.Response(status=503, text="Not configured")
+
+            base = await self._resolve_url(cfg)
+            upstream = (
+                f"{base}/Items/{item_id}/Images/Primary"
+                f"?fillWidth=64&fillHeight=64&quality=80&api_key={cfg['api_key']}"
+            )
+
+            try:
+                ssl_ctx = False if cfg.get("skip_ssl_verify") else SSL_CONTEXT
+                connector = aiohttp.TCPConnector(ssl=ssl_ctx)
+                async with aiohttp.ClientSession(connector=connector) as session:
+                    async with session.get(upstream) as resp:
+                        data = await resp.read()
+                        return web.Response(
+                            body=data,
+                            content_type=resp.headers.get("Content-Type", "image/jpeg"),
+                            headers={"Access-Control-Allow-Origin": "*"},
+                        )
+            except Exception as e:
+                decky.logger.error(f"Image proxy error for {item_id}: {e}")
+                return web.Response(status=502, text=str(e))
+
         app = web.Application()
         app.router.add_get("/audio/{item_id}", audio_proxy)
+        app.router.add_get("/image/{item_id}", image_proxy)
 
         runner = web.AppRunner(app)
         await runner.setup()

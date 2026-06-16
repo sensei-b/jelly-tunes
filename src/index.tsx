@@ -130,9 +130,9 @@ function Thumb({ src, fallback }: { src: string; fallback: ReactNode }) {
   );
 }
 
-function thumbUrl(serverUrl: string, apiKey: string, id: string): string {
-  if (!serverUrl || !apiKey || !id) return "";
-  return `${serverUrl}/Items/${id}/Images/Primary?fillWidth=64&fillHeight=64&quality=80&api_key=${apiKey}`;
+function thumbUrl(id: string): string {
+  if (!id) return "";
+  return `http://localhost:9099/image/${id}`;
 }
 
 function fmtTime(s: number): string {
@@ -214,7 +214,7 @@ function NowPlaying({
       </PanelSectionRow>
       <PanelSectionRow>
         <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%" }}>
-          <Thumb src={thumbUrl(serverUrl, apiKey, currentTrackId ?? "")} fallback={<FaMusic />} />
+          <Thumb src={thumbUrl(currentTrackId ?? "")} fallback={<FaMusic />} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               fontWeight: "bold",
@@ -697,7 +697,7 @@ function Content() {
           <PanelSectionRow key={album.Id}>
             <ButtonItem
               layout="below"
-              icon={<Thumb src={thumbUrl(serverUrl, apiKey, album.Id)} fallback={<FaMusic />} />}
+              icon={<Thumb src={thumbUrl(album.Id)} fallback={<FaMusic />} />}
               onClick={() => openTracks(album)}
             >
               {album.Name}
@@ -727,7 +727,7 @@ function Content() {
           <PanelSectionRow key={track.Id}>
             <ButtonItem
               layout="below"
-              icon={<Thumb src={thumbUrl(serverUrl, apiKey, track.Id)} fallback={<FaMusic />} />}
+              icon={<Thumb src={thumbUrl(track.Id)} fallback={<FaMusic />} />}
               onClick={() => playTrack(track)}
             >
               <span style={{ color: track.Id === currentTrackId ? ACCENT : undefined }}>
@@ -762,7 +762,7 @@ function Content() {
         <PanelSectionRow key={artist.Id}>
           <ButtonItem
             layout="below"
-            icon={<Thumb src={thumbUrl(serverUrl, apiKey, artist.Id)} fallback={<FaMusic />} />}
+            icon={<Thumb src={thumbUrl(artist.Id)} fallback={<FaMusic />} />}
             onClick={() => openAlbums(artist)}
           >
             {artist.Name}
