@@ -1,5 +1,6 @@
 # Jelly Tunes
 
+I'm not a professional developer, please forgive the vibe coding mess.
 A Decky Loader plugin that lets you browse and play music from your
 Jellyfin library without leaving Steam Deck Game Mode.
 
