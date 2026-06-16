@@ -1,6 +1,8 @@
 # Jelly Tunes
 
 I'm not a professional developer, please forgive the vibe coding mess.
+I wanted to be able to access my Jellyfin media server to play music easily
+while gaming or doing whatever on my Steam Deck! This was the result.
 A Decky Loader plugin that lets you browse and play music from your
 Jellyfin library without leaving Steam Deck Game Mode.
 
