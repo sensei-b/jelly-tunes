@@ -167,32 +167,21 @@ function Thumb({ src, fallback }) {
     // eslint-disable-next-line jsx-a11y/alt-text
     SP_JSX.jsx("img", { src: src, onError: () => setErrored(true), style: THUMB_STYLE }));
 }
-function ensureMarqueeStyle() {
-    if (document.getElementById("jt-marquee-style"))
-        return;
-    const s = document.createElement("style");
-    s.id = "jt-marquee-style";
-    s.textContent =
-        "@keyframes jt-marquee{0%,20%{transform:translateX(0)}80%,100%{transform:translateX(var(--jt-scroll,0px))}}";
-    document.head.appendChild(s);
-}
 function MarqueeText({ text }) {
     const outerRef = SP_REACT.useRef(null);
     const innerRef = SP_REACT.useRef(null);
-    const [scroll, setScroll] = SP_REACT.useState(0);
+    // scrollRef holds measured overflow — updated by the layout effect, read by the rAF loop
+    const scrollRef = SP_REACT.useRef(0);
+    // Measure overflow whenever text or layout changes
     SP_REACT.useEffect(() => {
-        ensureMarqueeStyle();
         const measure = () => {
-            if (outerRef.current && innerRef.current) {
-                const overflow = innerRef.current.scrollWidth - outerRef.current.clientWidth;
-                setScroll(Math.max(0, overflow));
-            }
+            if (!outerRef.current || !innerRef.current)
+                return;
+            scrollRef.current = Math.max(0, innerRef.current.scrollWidth - outerRef.current.clientWidth);
         };
         measure();
-        // Decky overlays settle layout slowly; retry at increasing delays to catch it
-        const t1 = setTimeout(measure, 50);
-        const t2 = setTimeout(measure, 200);
-        const t3 = setTimeout(measure, 500);
+        const t1 = setTimeout(measure, 100);
+        const t2 = setTimeout(measure, 500);
         const ro = new ResizeObserver(measure);
         if (outerRef.current)
             ro.observe(outerRef.current);
@@ -201,16 +190,42 @@ function MarqueeText({ text }) {
         return () => {
             clearTimeout(t1);
             clearTimeout(t2);
-            clearTimeout(t3);
             ro.disconnect();
         };
     }, [text]);
-    const innerStyle = { display: "inline-block", whiteSpace: "nowrap" };
-    if (scroll > 0) {
-        innerStyle.animation = "jt-marquee 8s ease-in-out infinite";
-        innerStyle["--jt-scroll"] = `-${scroll}px`;
-    }
-    return (SP_JSX.jsx("div", { ref: outerRef, style: { overflow: "hidden", width: "100%" }, children: SP_JSX.jsx("span", { ref: innerRef, style: innerStyle, children: text }) }));
+    // Drive the marquee animation via rAF — no CSS custom properties or @keyframes
+    SP_REACT.useEffect(() => {
+        const PAUSE = 1500; // ms paused at each end
+        const SCROLL = 4000; // ms to traverse full overflow
+        const CYCLE = (PAUSE + SCROLL) * 2;
+        let start = null;
+        let raf;
+        const tick = (now) => {
+            if (start === null)
+                start = now;
+            const overflow = scrollRef.current;
+            if (overflow > 0 && innerRef.current) {
+                const t = (now - start) % CYCLE;
+                let x;
+                if (t < PAUSE)
+                    x = 0;
+                else if (t < PAUSE + SCROLL)
+                    x = -overflow * (t - PAUSE) / SCROLL;
+                else if (t < PAUSE * 2 + SCROLL)
+                    x = -overflow;
+                else
+                    x = -overflow * (1 - (t - PAUSE * 2 - SCROLL) / SCROLL);
+                innerRef.current.style.transform = `translateX(${x}px)`;
+            }
+            else if (innerRef.current) {
+                innerRef.current.style.transform = "";
+            }
+            raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, []);
+    return (SP_JSX.jsx("div", { ref: outerRef, style: { overflow: "hidden", width: "100%" }, children: SP_JSX.jsx("span", { ref: innerRef, style: { display: "inline-block", whiteSpace: "nowrap" }, children: text }) }));
 }
 function thumbUrl(id) {
     if (!id)
