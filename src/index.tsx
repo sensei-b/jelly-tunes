@@ -171,9 +171,13 @@ function MarqueeText({ text }: { text: string }) {
       }
     };
     measure();
+    const t = setTimeout(measure, 50); // re-measure after layout settles
     const ro = new ResizeObserver(measure);
     if (outerRef.current) ro.observe(outerRef.current);
-    return () => ro.disconnect();
+    return () => {
+      clearTimeout(t);
+      ro.disconnect();
+    };
   }, [text]);
 
   const innerStyle: React.CSSProperties = { display: "inline-block", whiteSpace: "nowrap" };
@@ -907,7 +911,7 @@ function Content() {
                 <MarqueeText text={album.Name + (album.ProductionYear ? ` (${album.ProductionYear})` : "")} />
               </DialogButton>
               <DialogButton
-                style={{ width: 40, flexShrink: 0, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+                style={{ width: 40, flexShrink: 0, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 0" }}
                 onClick={() => playAlbum(album)}
               >
                 <FaPlay />
@@ -1023,7 +1027,7 @@ function Content() {
                           <MarqueeText text={album.Name + (album.ProductionYear ? ` (${album.ProductionYear})` : "")} />
                         </DialogButton>
                         <DialogButton
-                          style={{ width: 40, flexShrink: 0, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+                          style={{ width: 40, flexShrink: 0, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 0" }}
                           onClick={() => playAlbum(album)}
                         >
                           <FaPlay />
