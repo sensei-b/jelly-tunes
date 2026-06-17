@@ -241,7 +241,20 @@ function VolumeBar({ volume, onChange }: { volume: number; onChange: (v: number)
             borderRadius: 3,
             height: "100%",
             width: `${volume * 100}%`,
-          }} />
+            position: "relative",
+          }}>
+            <div style={{
+              position: "absolute",
+              right: -6,
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: 12,
+              height: 12,
+              borderRadius: "50%",
+              background: "white",
+              pointerEvents: "none",
+            }} />
+          </div>
         </div>
       </div>
     </PanelSectionRow>
@@ -1067,13 +1080,20 @@ function Content() {
                   <SearchSectionLabel label="Artists" />
                   {searchResults.artists.map((artist) => (
                     <PanelSectionRow key={artist.Id}>
-                      <ButtonItem
-                        layout="below"
-                        icon={<Thumb src={thumbUrl(artist.Id)} fallback={<FaMusic />} />}
-                        onClick={() => openAlbums(artist)}
+                      <Focusable
+                        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                        // @ts-ignore
+                        flow-children="row"
+                        style={{ display: "flex", gap: 4, width: "100%", alignItems: "center" }}
                       >
-                        {artist.Name}
-                      </ButtonItem>
+                        <Thumb src={thumbUrl(artist.Id)} fallback={<FaMusic />} />
+                        <DialogButton
+                          style={{ flex: 1, minWidth: 0, overflow: "hidden" }}
+                          onClick={() => openAlbums(artist)}
+                        >
+                          <MarqueeText text={artist.Name} />
+                        </DialogButton>
+                      </Focusable>
                     </PanelSectionRow>
                   ))}
                 </>
@@ -1143,13 +1163,20 @@ function Content() {
         <>
           {artists.map((artist) => (
             <PanelSectionRow key={artist.Id}>
-              <ButtonItem
-                layout="below"
-                icon={<Thumb src={thumbUrl(artist.Id)} fallback={<FaMusic />} />}
-                onClick={() => openAlbums(artist)}
+              <Focusable
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
+                flow-children="row"
+                style={{ display: "flex", gap: 4, width: "100%", alignItems: "center" }}
               >
-                {artist.Name}
-              </ButtonItem>
+                <Thumb src={thumbUrl(artist.Id)} fallback={<FaMusic />} />
+                <DialogButton
+                  style={{ flex: 1, minWidth: 0, overflow: "hidden" }}
+                  onClick={() => openAlbums(artist)}
+                >
+                  <MarqueeText text={artist.Name} />
+                </DialogButton>
+              </Focusable>
             </PanelSectionRow>
           ))}
           {artists.length === 0 && !error && (
