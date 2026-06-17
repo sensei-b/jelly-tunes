@@ -236,13 +236,12 @@ function VolumeBar({ volume, onChange }) {
         const rect = e.currentTarget.getBoundingClientRect();
         return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     };
-    return (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, width: "100%" }, children: [SP_JSX.jsx(FaVolumeDown, { style: { opacity: 0.7, flexShrink: 0 } }), SP_JSX.jsx("div", { style: {
+    return (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, width: "100%" }, children: [SP_JSX.jsx(FaVolumeDown, { style: { opacity: 0.7, flexShrink: 0, fontSize: "1.2em" } }), SP_JSX.jsx("div", { style: {
                         flex: 1,
-                        background: "rgba(255,255,255,0.15)",
-                        borderRadius: 3,
-                        height: 4,
+                        height: 40,
+                        display: "flex",
+                        alignItems: "center",
                         cursor: "pointer",
-                        position: "relative",
                     }, onPointerDown: (e) => {
                         e.currentTarget.setPointerCapture(e.pointerId);
                         onChange(calcVolume(e));
@@ -251,22 +250,28 @@ function VolumeBar({ volume, onChange }) {
                             return;
                         onChange(calcVolume(e));
                     }, children: SP_JSX.jsx("div", { style: {
-                            background: ACCENT,
-                            borderRadius: 3,
-                            height: "100%",
-                            width: `${volume * 100}%`,
+                            width: "100%",
+                            background: "rgba(255,255,255,0.15)",
+                            borderRadius: 4,
+                            height: 6,
                             position: "relative",
                         }, children: SP_JSX.jsx("div", { style: {
-                                position: "absolute",
-                                right: -6,
-                                top: "50%",
-                                transform: "translateY(-50%)",
-                                width: 12,
-                                height: 12,
-                                borderRadius: "50%",
-                                background: "white",
-                                pointerEvents: "none",
-                            } }) }) })] }) }));
+                                background: ACCENT,
+                                borderRadius: 4,
+                                height: "100%",
+                                width: `${volume * 100}%`,
+                                position: "relative",
+                            }, children: SP_JSX.jsx("div", { style: {
+                                    position: "absolute",
+                                    right: -10,
+                                    top: "50%",
+                                    transform: "translateY(-50%)",
+                                    width: 20,
+                                    height: 20,
+                                    borderRadius: "50%",
+                                    background: "white",
+                                    pointerEvents: "none",
+                                } }) }) }) })] }) }));
 }
 function thumbUrl(id) {
     if (!id)
