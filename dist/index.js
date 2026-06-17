@@ -189,12 +189,19 @@ function MarqueeText({ text }) {
             }
         };
         measure();
-        const t = setTimeout(measure, 50); // re-measure after layout settles
+        // Decky overlays settle layout slowly; retry at increasing delays to catch it
+        const t1 = setTimeout(measure, 50);
+        const t2 = setTimeout(measure, 200);
+        const t3 = setTimeout(measure, 500);
         const ro = new ResizeObserver(measure);
         if (outerRef.current)
             ro.observe(outerRef.current);
+        if (innerRef.current)
+            ro.observe(innerRef.current);
         return () => {
-            clearTimeout(t);
+            clearTimeout(t1);
+            clearTimeout(t2);
+            clearTimeout(t3);
             ro.disconnect();
         };
     }, [text]);
