@@ -2,7 +2,7 @@
   "name": "Jelly Tunes",
   "author": "sensei-b",
   "flags": [],
-  "api_version": 1,
+  "api_version": 2,
   "publish": {
     "tags": ["music", "jellyfin", "media"],
     "description": "Browse and play your Jellyfin music library from Game Mode.",

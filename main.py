@@ -216,9 +216,19 @@ class Plugin:
             "Recursive": "true",
             "Limit": 300,
         })
-        if "error" in result:
-            return result
-        return {"items": result["data"].get("Items", [])}
+        if "error" not in result:
+            return {"items": result["data"].get("Items", [])}
+        # Fall back to admin /Items endpoint when userId is invalid or /Artists fails.
+        result2 = await self._get("/Items", {
+            "IncludeItemTypes": "MusicArtist",
+            "SortBy": "SortName",
+            "SortOrder": "Ascending",
+            "Recursive": "true",
+            "Limit": 300,
+        })
+        if "error" in result2:
+            return result2
+        return {"items": result2["data"].get("Items", [])}
 
     async def get_albums(self, artist_id: str):
         cfg = _load_settings()

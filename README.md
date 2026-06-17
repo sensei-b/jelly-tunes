@@ -6,7 +6,7 @@ while gaming or doing whatever on my Steam Deck! This was the result.
 A Decky Loader plugin that lets you browse and play music from your
 Jellyfin library without leaving Steam Deck Game Mode.
 
-## Features (v1)
+## Features
 
 - Browse Artists -> Albums -> Tracks from your Jellyfin music library
 - Album/artist/track artwork pulled from Jellyfin (falls back to a music
@@ -15,6 +15,20 @@ Jellyfin library without leaving Steam Deck Game Mode.
 - Mini player with play/pause, previous/next, shuffle, and repeat
   (off -> repeat all -> repeat one)
 - Settings screen to store your Jellyfin server URL, API key, and User ID
+- **Global search** — searches artists, albums, and tracks simultaneously
+  from the top-level artists view
+- **Album play button** — tap ▶ on any album row to queue and play the
+  whole album without navigating into the track list
+- **Inline artist rows** — artist entries show a thumbnail and name in a
+  compact row layout
+- **Volume bar** — drag or tap the volume slider directly in the plugin;
+  includes a thumb knob for precise scrubbing
+- **Now Playing bar** — redesigned with a progress bar and a full
+  5-button transport (prev / play-pause / next / shuffle / repeat)
+- **Scrolling marquee** — long album/track titles scroll automatically
+  instead of being clipped
+- **Local URL setting** — optional second server URL for LAN access (avoids
+  routing through your public domain when you're on the same network)
 
 ## Playback behavior
 
@@ -50,6 +64,8 @@ Easiest path - sideload the pre-built plugin:
    and enter:
    - **Server URL**: your public Jellyfin URL, e.g. `https://jellyfin.yourdomain.com`
      (no trailing slash)
+   - **Local URL** *(optional)*: your LAN address, e.g. `http://192.168.1.x:8096`
+     — used automatically when the plugin can reach it, avoiding the public URL
    - **API Key**: the key from step 1
    - **User ID**: the UUID from step 2
 5. Tap **Save & Connect** - your artists should load.
@@ -67,7 +83,7 @@ This regenerates `dist/index.js`. Then re-zip the folder and re-sideload.
 
 ## Notes / known limitations
 
-- v1 plays tracks via direct stream (`/Audio/{id}/stream?static=true`) -
+- Plays tracks via direct stream (`/Audio/{id}/stream?static=true`) -
   no transcoding, so make sure your library formats (mp3/flac/etc.) are
   ones the Deck's browser audio engine can play directly.
 - No playlist/queue support beyond "play this album, queue everything
@@ -79,6 +95,10 @@ This regenerates `dist/index.js`. Then re-zip the folder and re-sideload.
   in `py_modules/` and builds an explicit SSL context from it, so this
   should no longer happen. If you ever re-vendor `py_modules/`, make sure
   `certifi` stays in there.
+- **Thumbnail proxy**: album art is fetched through a local Python HTTP
+  server (`localhost:19532`) rather than directly from Jellyfin. This works
+  around SSL/certificate failures in Steam Deck's CEF browser when loading
+  images over HTTPS.
 - If "Settings" still shows a connection error, double check the Server
   URL has no trailing slash and includes `https://` (the plugin will
   auto-add `https://` if you forget it, but it's worth confirming), and
