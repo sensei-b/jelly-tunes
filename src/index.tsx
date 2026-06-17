@@ -23,6 +23,7 @@ import {
   FaRedo,
   FaStepForward,
   FaStepBackward,
+  FaVolumeDown,
 } from "react-icons/fa";
 
 // -- Types ----------------------------------------------------------
@@ -89,6 +90,7 @@ let globalQueue: JellyfinItem[] = [];
 let globalQueueIndex: number = -1;
 let globalShuffle: boolean = false;
 let globalRepeat: RepeatMode = "off";
+let globalVolume: number = 1;
 
 const ERROR_MESSAGES: Record<string, string> = {
   not_configured: "Add your Jellyfin server details in Settings first.",
@@ -204,6 +206,45 @@ function MarqueeText({ text }: { text: string }) {
     <div ref={outerRef} style={{ overflow: "hidden", width: "100%" }}>
       <span ref={innerRef} style={{ display: "inline-block", whiteSpace: "nowrap" }}>{text}</span>
     </div>
+  );
+}
+
+function VolumeBar({ volume, onChange }: { volume: number; onChange: (v: number) => void }) {
+  const calcVolume = (e: React.PointerEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  };
+  return (
+    <PanelSectionRow>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+        <FaVolumeDown style={{ opacity: 0.7, flexShrink: 0 }} />
+        <div
+          style={{
+            flex: 1,
+            background: "rgba(255,255,255,0.15)",
+            borderRadius: 3,
+            height: 4,
+            cursor: "pointer",
+            position: "relative",
+          }}
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            onChange(calcVolume(e));
+          }}
+          onPointerMove={(e) => {
+            if (e.buttons === 0) return;
+            onChange(calcVolume(e));
+          }}
+        >
+          <div style={{
+            background: ACCENT,
+            borderRadius: 3,
+            height: "100%",
+            width: `${volume * 100}%`,
+          }} />
+        </div>
+      </div>
+    </PanelSectionRow>
   );
 }
 
@@ -383,6 +424,7 @@ interface BrowseListProps {
   title: string;
   breadcrumbs: BreadcrumbSegment[];
   nowPlayingProps: NowPlayingProps | null;
+  volumeBar?: ReactNode;
   error: string | null;
   searchValue: string;
   onSearchChange: (v: string) => void;
@@ -395,7 +437,7 @@ interface BrowseListProps {
 }
 
 function BrowseList({
-  title, breadcrumbs, nowPlayingProps, error,
+  title, breadcrumbs, nowPlayingProps, volumeBar, error,
   searchValue, onSearchChange, searchLabel,
   items, filteredItems, emptyLabel, noMatchLabel,
   renderItem,
@@ -409,6 +451,7 @@ function BrowseList({
       )}
       <Breadcrumb segments={breadcrumbs} />
       {nowPlayingProps && <NowPlaying {...nowPlayingProps} />}
+      {volumeBar}
       <PanelSectionRow>
         <TextField
           label={searchLabel}
@@ -455,6 +498,8 @@ function Content() {
   const [currentTime, setCurrentTime] = useState(0);
   const [trackDuration, setTrackDuration] = useState(0);
 
+  const [volume, setVolume] = useState(globalVolume);
+
   const [globalSearch, setGlobalSearch] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResults | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -487,6 +532,7 @@ function Content() {
       setNowPlayingAlbum(globalNowPlayingAlbum);
       setShuffle(globalShuffle);
       setRepeat(globalRepeat);
+      setVolume(globalVolume);
       setCurrentTime(globalAudio.currentTime);
       setTrackDuration(isFinite(globalAudio.duration) ? globalAudio.duration : 0);
       globalAudio.onended = () => handleTrackEnded();
@@ -629,6 +675,7 @@ function Content() {
     globalQueueIndex = index;
 
     globalAudio = new Audio(url);
+    globalAudio.volume = globalVolume;
     globalAudio.onended = () => handleTrackEnded();
     globalAudio.onerror = () => {
       setIsPlaying(false);
@@ -783,6 +830,12 @@ function Content() {
     }
   };
 
+  const handleVolumeChange = (v: number) => {
+    if (globalAudio) globalAudio.volume = v;
+    setVolume(v);
+    globalVolume = v;
+  };
+
   // -- Settings ---------------------------------------------------
   const handleSaveSettings = async () => {
     setSaving(true);
@@ -901,6 +954,7 @@ function Content() {
           ...(selectedArtist ? [{ label: selectedArtist.Name }] : []),
         ]}
         nowPlayingProps={nowPlayingProps}
+        volumeBar={<VolumeBar volume={volume} onChange={handleVolumeChange} />}
         error={error}
         searchValue={albumSearch}
         onSearchChange={setAlbumSearch}
@@ -948,6 +1002,7 @@ function Content() {
           ...(selectedAlbum ? [{ label: selectedAlbum.Name }] : []),
         ]}
         nowPlayingProps={nowPlayingProps}
+        volumeBar={<VolumeBar volume={volume} onChange={handleVolumeChange} />}
         error={error}
         searchValue={trackSearch}
         onSearchChange={setTrackSearch}
@@ -987,6 +1042,7 @@ function Content() {
     <PanelSection title="Jelly Tunes">
       <ErrorRow />
       {nowPlayingProps && <NowPlaying {...nowPlayingProps} />}
+      <VolumeBar volume={volume} onChange={handleVolumeChange} />
       <PanelSectionRow>
         <ButtonItem layout="below" onClick={() => setView("settings")}>
           <FaCog /> Settings

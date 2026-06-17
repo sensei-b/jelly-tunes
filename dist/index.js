@@ -1,3 +1,4 @@
+(function() {
 const manifest = {"name":"Jelly Tunes"};
 const API_VERSION = 2;
 const internalAPIConnection = window.__DECKY_SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED_deckyLoaderAPIInit;
@@ -98,6 +99,8 @@ function FaArrowLeft (props) {
   return GenIcon({"attr":{"viewBox":"0 0 448 512"},"child":[{"tag":"path","attr":{"d":"M64 468V44c0-6.6 5.4-12 12-12h48c6.6 0 12 5.4 12 12v176.4l195.5-181C352.1 22.3 384 36.6 384 64v384c0 27.4-31.9 41.7-52.5 24.6L136 292.7V468c0 6.6-5.4 12-12 12H76c-6.6 0-12-5.4-12-12z"},"child":[]}]})(props);
 }function FaStepForward (props) {
   return GenIcon({"attr":{"viewBox":"0 0 448 512"},"child":[{"tag":"path","attr":{"d":"M384 44v424c0 6.6-5.4 12-12 12h-48c-6.6 0-12-5.4-12-12V291.6l-195.5 181C95.9 489.7 64 475.4 64 448V64c0-27.4 31.9-41.7 52.5-24.6L312 219.3V44c0-6.6 5.4-12 12-12h48c6.6 0 12 5.4 12 12z"},"child":[]}]})(props);
+}function FaVolumeDown (props) {
+  return GenIcon({"attr":{"viewBox":"0 0 384 512"},"child":[{"tag":"path","attr":{"d":"M215.03 72.04L126.06 161H24c-13.26 0-24 10.74-24 24v144c0 13.25 10.74 24 24 24h102.06l88.97 88.95c15.03 15.03 40.97 4.47 40.97-16.97V89.02c0-21.47-25.96-31.98-40.97-16.98zm123.2 108.08c-11.58-6.33-26.19-2.16-32.61 9.45-6.39 11.61-2.16 26.2 9.45 32.61C327.98 229.28 336 242.62 336 257c0 14.38-8.02 27.72-20.92 34.81-11.61 6.41-15.84 21-9.45 32.61 6.43 11.66 21.05 15.8 32.61 9.45 28.23-15.55 45.77-45 45.77-76.88s-17.54-61.32-45.78-76.87z"},"child":[]}]})(props);
 }
 
 // -- Backend calls ----------------------------------------------------
@@ -118,6 +121,7 @@ let globalQueue = [];
 let globalQueueIndex = -1;
 let globalShuffle = false;
 let globalRepeat = "off";
+let globalVolume = 1;
 const ERROR_MESSAGES = {
     not_configured: "Add your Jellyfin server details in Settings first.",
     timeout: "Connection to Jellyfin timed out.",
@@ -227,6 +231,32 @@ function MarqueeText({ text }) {
     }, []);
     return (SP_JSX.jsx("div", { ref: outerRef, style: { overflow: "hidden", width: "100%" }, children: SP_JSX.jsx("span", { ref: innerRef, style: { display: "inline-block", whiteSpace: "nowrap" }, children: text }) }));
 }
+function VolumeBar({ volume, onChange }) {
+    const calcVolume = (e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    };
+    return (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, width: "100%" }, children: [SP_JSX.jsx(FaVolumeDown, { style: { opacity: 0.7, flexShrink: 0 } }), SP_JSX.jsx("div", { style: {
+                        flex: 1,
+                        background: "rgba(255,255,255,0.15)",
+                        borderRadius: 3,
+                        height: 4,
+                        cursor: "pointer",
+                        position: "relative",
+                    }, onPointerDown: (e) => {
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                        onChange(calcVolume(e));
+                    }, onPointerMove: (e) => {
+                        if (e.buttons === 0)
+                            return;
+                        onChange(calcVolume(e));
+                    }, children: SP_JSX.jsx("div", { style: {
+                            background: ACCENT,
+                            borderRadius: 3,
+                            height: "100%",
+                            width: `${volume * 100}%`,
+                        } }) })] }) }));
+}
 function thumbUrl(id) {
     if (!id)
         return "";
@@ -287,8 +317,8 @@ function Breadcrumb({ segments }) {
                 return i === 0 ? [el] : [SP_JSX.jsx("span", { style: { opacity: 0.4 }, children: "\u203A" }, `sep${i}`), el];
             }) }) }));
 }
-function BrowseList({ title, breadcrumbs, nowPlayingProps, error, searchValue, onSearchChange, searchLabel, items, filteredItems, emptyLabel, noMatchLabel, renderItem, }) {
-    return (SP_JSX.jsxs(DFL.PanelSection, { title: title, children: [error && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { color: "#ff6b6b", padding: "4px 0" }, children: friendlyError(error) }) })), SP_JSX.jsx(Breadcrumb, { segments: breadcrumbs }), nowPlayingProps && SP_JSX.jsx(NowPlaying, { ...nowPlayingProps }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: searchLabel, value: searchValue, onChange: (e) => onSearchChange(e.target.value), bShowClearAction: true, bAlwaysShowClearAction: searchValue.length > 0 }) }), filteredItems.map(renderItem), items.length === 0 && SP_JSX.jsx(DFL.PanelSectionRow, { children: emptyLabel }), items.length > 0 && filteredItems.length === 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: noMatchLabel }))] }));
+function BrowseList({ title, breadcrumbs, nowPlayingProps, volumeBar, error, searchValue, onSearchChange, searchLabel, items, filteredItems, emptyLabel, noMatchLabel, renderItem, }) {
+    return (SP_JSX.jsxs(DFL.PanelSection, { title: title, children: [error && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { color: "#ff6b6b", padding: "4px 0" }, children: friendlyError(error) }) })), SP_JSX.jsx(Breadcrumb, { segments: breadcrumbs }), nowPlayingProps && SP_JSX.jsx(NowPlaying, { ...nowPlayingProps }), volumeBar, SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: searchLabel, value: searchValue, onChange: (e) => onSearchChange(e.target.value), bShowClearAction: true, bAlwaysShowClearAction: searchValue.length > 0 }) }), filteredItems.map(renderItem), items.length === 0 && SP_JSX.jsx(DFL.PanelSectionRow, { children: emptyLabel }), items.length > 0 && filteredItems.length === 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: noMatchLabel }))] }));
 }
 function filterByName(items, search) {
     const term = search.trim().toLowerCase();
@@ -312,6 +342,7 @@ function Content() {
     const [nowPlayingAlbum, setNowPlayingAlbum] = SP_REACT.useState(null);
     const [currentTime, setCurrentTime] = SP_REACT.useState(0);
     const [trackDuration, setTrackDuration] = SP_REACT.useState(0);
+    const [volume, setVolume] = SP_REACT.useState(globalVolume);
     const [globalSearch, setGlobalSearch] = SP_REACT.useState("");
     const [searchResults, setSearchResults] = SP_REACT.useState(null);
     const [searchLoading, setSearchLoading] = SP_REACT.useState(false);
@@ -341,6 +372,7 @@ function Content() {
             setNowPlayingAlbum(globalNowPlayingAlbum);
             setShuffle(globalShuffle);
             setRepeat(globalRepeat);
+            setVolume(globalVolume);
             setCurrentTime(globalAudio.currentTime);
             setTrackDuration(isFinite(globalAudio.duration) ? globalAudio.duration : 0);
             globalAudio.onended = () => handleTrackEnded();
@@ -472,6 +504,7 @@ function Content() {
         queueIndexRef.current = index;
         globalQueueIndex = index;
         globalAudio = new Audio(url);
+        globalAudio.volume = globalVolume;
         globalAudio.onended = () => handleTrackEnded();
         globalAudio.onerror = () => {
             setIsPlaying(false);
@@ -617,6 +650,12 @@ function Content() {
             setCurrentTime(globalAudio.currentTime);
         }
     };
+    const handleVolumeChange = (v) => {
+        if (globalAudio)
+            globalAudio.volume = v;
+        setVolume(v);
+        globalVolume = v;
+    };
     // -- Settings ---------------------------------------------------
     const handleSaveSettings = async () => {
         setSaving(true);
@@ -659,7 +698,7 @@ function Content() {
         return (SP_JSX.jsx(BrowseList, { title: selectedArtist?.Name ?? "Albums", breadcrumbs: [
                 { label: "Artists", onClick: () => setView("artists") },
                 ...(selectedArtist ? [{ label: selectedArtist.Name }] : []),
-            ], nowPlayingProps: nowPlayingProps, error: error, searchValue: albumSearch, onSearchChange: setAlbumSearch, searchLabel: "Search albums", items: albums, filteredItems: filteredAlbums, emptyLabel: "No albums found for this artist.", noMatchLabel: `No albums match "${albumSearch}".`, renderItem: (album) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.Focusable
+            ], nowPlayingProps: nowPlayingProps, volumeBar: SP_JSX.jsx(VolumeBar, { volume: volume, onChange: handleVolumeChange }), error: error, searchValue: albumSearch, onSearchChange: setAlbumSearch, searchLabel: "Search albums", items: albums, filteredItems: filteredAlbums, emptyLabel: "No albums found for this artist.", noMatchLabel: `No albums match "${albumSearch}".`, renderItem: (album) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.Focusable
                 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                 // @ts-ignore
                 , { "flow-children": "row", style: { display: "flex", gap: 4, width: "100%", alignItems: "center" }, children: [SP_JSX.jsx(Thumb, { src: thumbUrl(album.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), SP_JSX.jsx(DFL.DialogButton, { style: { flex: 1, minWidth: 0, overflow: "hidden" }, onClick: () => openTracks(album), children: SP_JSX.jsx(MarqueeText, { text: album.Name + (album.ProductionYear ? ` (${album.ProductionYear})` : "") }) }), SP_JSX.jsx(DFL.DialogButton, { style: { width: 40, flexShrink: 0, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 0" }, onClick: () => playAlbum(album), children: SP_JSX.jsx(FaPlay, {}) })] }) }, album.Id)) }));
@@ -670,11 +709,11 @@ function Content() {
                 { label: "Artists", onClick: () => setView("artists") },
                 ...(selectedArtist ? [{ label: selectedArtist.Name, onClick: () => setView("albums") }] : []),
                 ...(selectedAlbum ? [{ label: selectedAlbum.Name }] : []),
-            ], nowPlayingProps: nowPlayingProps, error: error, searchValue: trackSearch, onSearchChange: setTrackSearch, searchLabel: "Search tracks", items: tracks, filteredItems: filteredTracks, emptyLabel: "No tracks found on this album.", noMatchLabel: `No tracks match "${trackSearch}".`, renderItem: (track) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", icon: SP_JSX.jsx(Thumb, { src: thumbUrl(track.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), onClick: () => playTrack(track), children: SP_JSX.jsxs("span", { style: { color: track.Id === currentTrackId ? ACCENT : undefined }, children: [track.IndexNumber ? `${track.IndexNumber}. ` : "", track.Name] }) }) }, track.Id)) }));
+            ], nowPlayingProps: nowPlayingProps, volumeBar: SP_JSX.jsx(VolumeBar, { volume: volume, onChange: handleVolumeChange }), error: error, searchValue: trackSearch, onSearchChange: setTrackSearch, searchLabel: "Search tracks", items: tracks, filteredItems: filteredTracks, emptyLabel: "No tracks found on this album.", noMatchLabel: `No tracks match "${trackSearch}".`, renderItem: (track) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", icon: SP_JSX.jsx(Thumb, { src: thumbUrl(track.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), onClick: () => playTrack(track), children: SP_JSX.jsxs("span", { style: { color: track.Id === currentTrackId ? ACCENT : undefined }, children: [track.IndexNumber ? `${track.IndexNumber}. ` : "", track.Name] }) }) }, track.Id)) }));
     }
     const SearchSectionLabel = ({ label }) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { fontSize: "0.75em", opacity: 0.5, textTransform: "uppercase", letterSpacing: "0.05em" }, children: label }) }));
     // -- Artists view (default) -------------------------------------------
-    return (SP_JSX.jsxs(DFL.PanelSection, { title: "Jelly Tunes", children: [SP_JSX.jsx(ErrorRow, {}), nowPlayingProps && SP_JSX.jsx(NowPlaying, { ...nowPlayingProps }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.ButtonItem, { layout: "below", onClick: () => setView("settings"), children: [SP_JSX.jsx(FaCog, {}), " Settings"] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: "Search artists, albums & songs", value: globalSearch, onChange: (e) => setGlobalSearch(e.target.value), bShowClearAction: true, bAlwaysShowClearAction: globalSearch.length > 0 }) }), globalSearch.trim().length >= 2 ? (SP_JSX.jsxs(SP_JSX.Fragment, { children: [searchLoading && SP_JSX.jsx(DFL.PanelSectionRow, { children: "Searching..." }), !searchLoading && searchResults && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [searchResults.artists.length > 0 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(SearchSectionLabel, { label: "Artists" }), searchResults.artists.map((artist) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", icon: SP_JSX.jsx(Thumb, { src: thumbUrl(artist.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), onClick: () => openAlbums(artist), children: artist.Name }) }, artist.Id)))] })), searchResults.albums.length > 0 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(SearchSectionLabel, { label: "Albums" }), searchResults.albums.map((album) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.Focusable
+    return (SP_JSX.jsxs(DFL.PanelSection, { title: "Jelly Tunes", children: [SP_JSX.jsx(ErrorRow, {}), nowPlayingProps && SP_JSX.jsx(NowPlaying, { ...nowPlayingProps }), SP_JSX.jsx(VolumeBar, { volume: volume, onChange: handleVolumeChange }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.ButtonItem, { layout: "below", onClick: () => setView("settings"), children: [SP_JSX.jsx(FaCog, {}), " Settings"] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: "Search artists, albums & songs", value: globalSearch, onChange: (e) => setGlobalSearch(e.target.value), bShowClearAction: true, bAlwaysShowClearAction: globalSearch.length > 0 }) }), globalSearch.trim().length >= 2 ? (SP_JSX.jsxs(SP_JSX.Fragment, { children: [searchLoading && SP_JSX.jsx(DFL.PanelSectionRow, { children: "Searching..." }), !searchLoading && searchResults && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [searchResults.artists.length > 0 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(SearchSectionLabel, { label: "Artists" }), searchResults.artists.map((artist) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", icon: SP_JSX.jsx(Thumb, { src: thumbUrl(artist.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), onClick: () => openAlbums(artist), children: artist.Name }) }, artist.Id)))] })), searchResults.albums.length > 0 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(SearchSectionLabel, { label: "Albums" }), searchResults.albums.map((album) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.Focusable
                                         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                                         // @ts-ignore
                                         , { "flow-children": "row", style: { display: "flex", gap: 4, width: "100%", alignItems: "center" }, children: [SP_JSX.jsx(Thumb, { src: thumbUrl(album.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), SP_JSX.jsx(DFL.DialogButton, { style: { flex: 1, minWidth: 0, overflow: "hidden" }, onClick: () => openTracks(album), children: SP_JSX.jsx(MarqueeText, { text: album.Name + (album.ProductionYear ? ` (${album.ProductionYear})` : "") }) }), SP_JSX.jsx(DFL.DialogButton, { style: { width: 40, flexShrink: 0, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 0" }, onClick: () => playAlbum(album), children: SP_JSX.jsx(FaPlay, {}) })] }) }, album.Id)))] })), searchResults.tracks.length > 0 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(SearchSectionLabel, { label: "Songs" }), searchResults.tracks.map((track) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", icon: SP_JSX.jsx(Thumb, { src: thumbUrl(track.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), onClick: () => playSearchTrack(track), children: SP_JSX.jsx("span", { style: { color: track.Id === currentTrackId ? ACCENT : undefined }, children: track.Name }) }) }, track.Id)))] })), !searchResults.error &&
@@ -699,5 +738,6 @@ var index = definePlugin(() => {
     };
 });
 
-export { index as default };
+return index;
+})()
 //# sourceMappingURL=index.js.map
