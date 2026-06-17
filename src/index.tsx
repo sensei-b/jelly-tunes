@@ -210,10 +210,25 @@ function MarqueeText({ text }: { text: string }) {
 }
 
 function VolumeBar({ volume, onChange }: { volume: number; onChange: (v: number) => void }) {
-  const calcVolume = (e: React.PointerEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const trackRef = useRef<HTMLDivElement>(null);
+  const fillRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+
+  // Sync fill width from prop when not dragging (mount / external change)
+  useEffect(() => {
+    if (!dragging.current && fillRef.current) {
+      fillRef.current.style.width = `${volume * 100}%`;
+    }
+  }, [volume]);
+
+  const applyPosition = (e: React.PointerEvent<HTMLDivElement>): number => {
+    if (!trackRef.current) return 0;
+    const rect = trackRef.current.getBoundingClientRect();
+    const v = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    if (fillRef.current) fillRef.current.style.width = `${v * 100}%`;
+    return v;
   };
+
   return (
     <PanelSectionRow>
       <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
@@ -228,14 +243,20 @@ function VolumeBar({ volume, onChange }: { volume: number; onChange: (v: number)
           }}
           onPointerDown={(e) => {
             e.currentTarget.setPointerCapture(e.pointerId);
-            onChange(calcVolume(e));
+            dragging.current = true;
+            onChange(applyPosition(e));
           }}
           onPointerMove={(e) => {
             if (e.buttons === 0) return;
-            onChange(calcVolume(e));
+            onChange(applyPosition(e));
+          }}
+          onPointerUp={(e) => {
+            dragging.current = false;
+            onChange(applyPosition(e));
           }}
         >
           <div
+            ref={trackRef}
             style={{
               width: "100%",
               background: "rgba(255,255,255,0.15)",
@@ -244,7 +265,7 @@ function VolumeBar({ volume, onChange }: { volume: number; onChange: (v: number)
               position: "relative",
             }}
           >
-            <div style={{
+            <div ref={fillRef} style={{
               background: ACCENT,
               borderRadius: 4,
               height: "100%",

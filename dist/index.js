@@ -232,9 +232,23 @@ function MarqueeText({ text }) {
     return (SP_JSX.jsx("div", { ref: outerRef, style: { overflow: "hidden", width: "100%" }, children: SP_JSX.jsx("span", { ref: innerRef, style: { display: "inline-block", whiteSpace: "nowrap" }, children: text }) }));
 }
 function VolumeBar({ volume, onChange }) {
-    const calcVolume = (e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const trackRef = SP_REACT.useRef(null);
+    const fillRef = SP_REACT.useRef(null);
+    const dragging = SP_REACT.useRef(false);
+    // Sync fill width from prop when not dragging (mount / external change)
+    SP_REACT.useEffect(() => {
+        if (!dragging.current && fillRef.current) {
+            fillRef.current.style.width = `${volume * 100}%`;
+        }
+    }, [volume]);
+    const applyPosition = (e) => {
+        if (!trackRef.current)
+            return 0;
+        const rect = trackRef.current.getBoundingClientRect();
+        const v = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        if (fillRef.current)
+            fillRef.current.style.width = `${v * 100}%`;
+        return v;
     };
     return (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, width: "100%" }, children: [SP_JSX.jsx(FaVolumeDown, { style: { opacity: 0.7, flexShrink: 0, fontSize: "1.2em" } }), SP_JSX.jsx("div", { style: {
                         flex: 1,
@@ -244,18 +258,22 @@ function VolumeBar({ volume, onChange }) {
                         cursor: "pointer",
                     }, onPointerDown: (e) => {
                         e.currentTarget.setPointerCapture(e.pointerId);
-                        onChange(calcVolume(e));
+                        dragging.current = true;
+                        onChange(applyPosition(e));
                     }, onPointerMove: (e) => {
                         if (e.buttons === 0)
                             return;
-                        onChange(calcVolume(e));
-                    }, children: SP_JSX.jsx("div", { style: {
+                        onChange(applyPosition(e));
+                    }, onPointerUp: (e) => {
+                        dragging.current = false;
+                        onChange(applyPosition(e));
+                    }, children: SP_JSX.jsx("div", { ref: trackRef, style: {
                             width: "100%",
                             background: "rgba(255,255,255,0.15)",
                             borderRadius: 4,
                             height: 6,
                             position: "relative",
-                        }, children: SP_JSX.jsx("div", { style: {
+                        }, children: SP_JSX.jsx("div", { ref: fillRef, style: {
                                 background: ACCENT,
                                 borderRadius: 4,
                                 height: "100%",
