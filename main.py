@@ -58,6 +58,9 @@ class Plugin:
     # Shared HTTP session — avoids a new TCP+TLS handshake per request.
     _session: aiohttp.ClientSession | None = None
 
+    # In-memory thumbnail cache: item_id -> (bytes, content_type).
+    _image_cache: dict[str, tuple[bytes, str]] = {}
+
     async def _get_session(self, ssl_ctx) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
@@ -527,6 +530,15 @@ class Plugin:
 
         async def image_proxy(request):
             item_id = request.match_info["item_id"]
+
+            if item_id in self._image_cache:
+                data, ct = self._image_cache[item_id]
+                return web.Response(
+                    body=data,
+                    content_type=ct,
+                    headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "max-age=86400"},
+                )
+
             cfg = _load_settings()
             if not cfg["server_url"] or not cfg["api_key"]:
                 return web.Response(status=503, text="Not configured")
@@ -541,12 +553,16 @@ class Plugin:
                 ssl_ctx = False if cfg.get("skip_ssl_verify") else SSL_CONTEXT
                 session = await self._get_session(ssl_ctx)
                 async with session.get(upstream) as resp:
-                        data = await resp.read()
-                        return web.Response(
-                            body=data,
-                            content_type=resp.headers.get("Content-Type", "image/jpeg"),
-                            headers={"Access-Control-Allow-Origin": "*"},
-                        )
+                    data = await resp.read()
+                    ct = resp.headers.get("Content-Type", "image/jpeg")
+                    if len(self._image_cache) >= 512:
+                        self._image_cache.clear()
+                    self._image_cache[item_id] = (data, ct)
+                    return web.Response(
+                        body=data,
+                        content_type=ct,
+                        headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "max-age=86400"},
+                    )
             except Exception as e:
                 decky.logger.error(f"Image proxy error for {item_id}: {e}")
                 return web.Response(status=502, text=str(e))

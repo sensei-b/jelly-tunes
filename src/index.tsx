@@ -146,7 +146,7 @@ function Thumb({ src, fallback }: { src: string; fallback: ReactNode }) {
 
   return (
     // eslint-disable-next-line jsx-a11y/alt-text
-    <img src={src} onError={() => setErrored(true)} style={THUMB_STYLE} />
+    <img src={src} onError={() => setErrored(true)} style={THUMB_STYLE} loading="lazy" />
   );
 }
 

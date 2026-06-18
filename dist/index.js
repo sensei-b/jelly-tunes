@@ -167,7 +167,7 @@ function Thumb({ src, fallback }) {
     }
     return (
     // eslint-disable-next-line jsx-a11y/alt-text
-    SP_JSX.jsx("img", { src: src, onError: () => setErrored(true), style: THUMB_STYLE }));
+    SP_JSX.jsx("img", { src: src, onError: () => setErrored(true), style: THUMB_STYLE, loading: "lazy" }));
 }
 function MarqueeText({ text }) {
     const outerRef = SP_REACT.useRef(null);
