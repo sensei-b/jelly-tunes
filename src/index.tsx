@@ -77,7 +77,6 @@ const saveSettingsCall = callable<
 const getArtists = callable<[], ItemsResult>("get_artists");
 const getAlbums = callable<[artist_id: string], ItemsResult>("get_albums");
 const getTracks = callable<[album_id: string], ItemsResult>("get_tracks");
-const getStreamUrl = callable<[item_id: string], string>("get_stream_url");
 const searchAll = callable<[query: string], SearchResults>("search_all");
 
 // Single shared audio element so playback survives view changes
@@ -238,8 +237,6 @@ interface NowPlayingProps {
   nowPlayingAlbum: string | null;
   shuffle: boolean;
   repeat: RepeatMode;
-  serverUrl: string;
-  apiKey: string;
   onTogglePause(): void;
   onSkip(dir: 1 | -1): void;
   onToggleShuffle(): void;
@@ -249,7 +246,7 @@ interface NowPlayingProps {
 
 function NowPlaying({
   nowPlaying, isPlaying, currentTrackId, nowPlayingArtist, nowPlayingAlbum,
-  shuffle, repeat, serverUrl, apiKey,
+  shuffle, repeat,
   onTogglePause, onSkip, onToggleShuffle, onCycleRepeat, onSeek,
 }: NowPlayingProps) {
   const [currentTime, setCurrentTime] = useState(() => globalAudio ? globalAudio.currentTime : 0);
@@ -862,8 +859,6 @@ function Content() {
     nowPlayingAlbum,
     shuffle,
     repeat,
-    serverUrl,
-    apiKey,
     onTogglePause: togglePause,
     onSkip: skip,
     onToggleShuffle: toggleShuffle,

@@ -107,7 +107,6 @@ const saveSettingsCall = callable("save_settings");
 const getArtists = callable("get_artists");
 const getAlbums = callable("get_albums");
 const getTracks = callable("get_tracks");
-callable("get_stream_url");
 const searchAll = callable("search_all");
 // Single shared audio element so playback survives view changes
 let globalAudio = null;
@@ -245,7 +244,7 @@ function fmtTime(s) {
     const sec = Math.floor(s % 60);
     return `${m}:${sec.toString().padStart(2, "0")}`;
 }
-function NowPlaying({ nowPlaying, isPlaying, currentTrackId, nowPlayingArtist, nowPlayingAlbum, shuffle, repeat, serverUrl, apiKey, onTogglePause, onSkip, onToggleShuffle, onCycleRepeat, onSeek, }) {
+function NowPlaying({ nowPlaying, isPlaying, currentTrackId, nowPlayingArtist, nowPlayingAlbum, shuffle, repeat, onTogglePause, onSkip, onToggleShuffle, onCycleRepeat, onSeek, }) {
     const [currentTime, setCurrentTime] = SP_REACT.useState(() => globalAudio ? globalAudio.currentTime : 0);
     const [trackDuration, setTrackDuration] = SP_REACT.useState(() => globalAudio && isFinite(globalAudio.duration) ? globalAudio.duration : 0);
     SP_REACT.useEffect(() => {
@@ -685,8 +684,6 @@ function Content() {
         nowPlayingAlbum,
         shuffle,
         repeat,
-        serverUrl,
-        apiKey,
         onTogglePause: togglePause,
         onSkip: skip,
         onToggleShuffle: toggleShuffle,

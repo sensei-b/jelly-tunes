@@ -35,16 +35,25 @@ def _normalize_server_url(url: str) -> str:
     return url
 
 
-def _load_settings():
+_settings_cache: dict | None = None
+
+
+def _load_settings() -> dict:
+    global _settings_cache
+    if _settings_cache is not None:
+        return _settings_cache
     try:
         with open(SETTINGS_FILE, "r") as f:
             data = json.load(f)
-            return {**DEFAULT_SETTINGS, **data}
+            _settings_cache = {**DEFAULT_SETTINGS, **data}
     except (FileNotFoundError, json.JSONDecodeError):
-        return dict(DEFAULT_SETTINGS)
+        _settings_cache = dict(DEFAULT_SETTINGS)
+    return _settings_cache
 
 
 def _save_settings(data):
+    global _settings_cache
+    _settings_cache = None
     os.makedirs(decky.DECKY_PLUGIN_SETTINGS_DIR, exist_ok=True)
     with open(SETTINGS_FILE, "w") as f:
         json.dump(data, f)
@@ -434,26 +443,6 @@ class Plugin:
         }
 
     # -- Playback -----------------------------------------------------
-    async def get_stream_url(self, item_id: str):
-        cfg = _load_settings()
-        if not cfg["server_url"] or not cfg["api_key"]:
-            return ""
-        # Use the universal endpoint so Jellyfin transcodes to MP3 when the
-        # original format (e.g. WMA) isn't supported by Chromium. For already-
-        # compatible formats (mp3/flac/aac/ogg) it streams the file directly.
-        # Omit UserId — the configured user_id may be invalid (admin API key
-        # auth is sufficient for streaming), and an invalid UserId causes
-        # Jellyfin to return 404, which makes the browser audio element fail.
-        return (
-            f"{cfg['server_url']}/Audio/{item_id}/universal"
-            f"?api_key={cfg['api_key']}"
-            f"&DeviceId=JellyTunes"
-            f"&Container=opus,mp3,aac,m4a,flac,ogg,wav"
-            f"&TranscodingContainer=mp3"
-            f"&AudioCodec=mp3"
-            f"&MaxStreamingBitrate=140000000"
-        )
-
     # -- Audio proxy ---------------------------------------------------
     # CEF (Steam overlay browser) connects to Jellyfin directly for
     # audio and often fails the SSL handshake (TLSV1_ALERT_INTERNAL_ERROR).
