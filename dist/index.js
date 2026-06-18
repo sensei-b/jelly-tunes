@@ -245,7 +245,20 @@ function fmtTime(s) {
     const sec = Math.floor(s % 60);
     return `${m}:${sec.toString().padStart(2, "0")}`;
 }
-function NowPlaying({ nowPlaying, isPlaying, currentTrackId, nowPlayingArtist, nowPlayingAlbum, currentTime, trackDuration, shuffle, repeat, serverUrl, apiKey, onTogglePause, onSkip, onToggleShuffle, onCycleRepeat, onSeek, }) {
+function NowPlaying({ nowPlaying, isPlaying, currentTrackId, nowPlayingArtist, nowPlayingAlbum, shuffle, repeat, serverUrl, apiKey, onTogglePause, onSkip, onToggleShuffle, onCycleRepeat, onSeek, }) {
+    const [currentTime, setCurrentTime] = SP_REACT.useState(() => globalAudio ? globalAudio.currentTime : 0);
+    const [trackDuration, setTrackDuration] = SP_REACT.useState(() => globalAudio && isFinite(globalAudio.duration) ? globalAudio.duration : 0);
+    SP_REACT.useEffect(() => {
+        if (!isPlaying)
+            return;
+        const id = setInterval(() => {
+            if (globalAudio) {
+                setCurrentTime(globalAudio.currentTime);
+                setTrackDuration(isFinite(globalAudio.duration) ? globalAudio.duration : 0);
+            }
+        }, 500);
+        return () => clearInterval(id);
+    }, [isPlaying]);
     const progress = trackDuration > 0 ? currentTime / trackDuration : 0;
     const seekTrackRef = SP_REACT.useRef(null);
     const seekFillRef = SP_REACT.useRef(null);
@@ -356,8 +369,6 @@ function Content() {
     const [repeat, setRepeat] = SP_REACT.useState("off");
     const [nowPlayingArtist, setNowPlayingArtist] = SP_REACT.useState(null);
     const [nowPlayingAlbum, setNowPlayingAlbum] = SP_REACT.useState(null);
-    const [currentTime, setCurrentTime] = SP_REACT.useState(0);
-    const [trackDuration, setTrackDuration] = SP_REACT.useState(0);
     const [volume, setVolume] = SP_REACT.useState(globalVolume);
     const [globalSearch, setGlobalSearch] = SP_REACT.useState("");
     const [searchResults, setSearchResults] = SP_REACT.useState(null);
@@ -389,8 +400,6 @@ function Content() {
             setShuffle(globalShuffle);
             setRepeat(globalRepeat);
             setVolume(globalVolume);
-            setCurrentTime(globalAudio.currentTime);
-            setTrackDuration(isFinite(globalAudio.duration) ? globalAudio.duration : 0);
             globalAudio.onended = () => handleTrackEnded();
             globalAudio.onerror = () => {
                 setIsPlaying(false);
@@ -421,17 +430,6 @@ function Content() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     SP_REACT.useEffect(() => {
-        if (!isPlaying)
-            return;
-        const id = setInterval(() => {
-            if (globalAudio) {
-                setCurrentTime(globalAudio.currentTime);
-                setTrackDuration(isFinite(globalAudio.duration) ? globalAudio.duration : 0);
-            }
-        }, 500);
-        return () => clearInterval(id);
-    }, [isPlaying]);
-    SP_REACT.useEffect(() => {
         const term = globalSearch.trim();
         if (term.length < 2) {
             setSearchResults(null);
@@ -447,8 +445,8 @@ function Content() {
         return () => clearTimeout(timeout);
     }, [globalSearch]);
     // -- Search -----------------------------------------------------
-    const filteredAlbums = filterByName(albums, albumSearch);
-    const filteredTracks = filterByName(tracks, trackSearch);
+    const filteredAlbums = SP_REACT.useMemo(() => filterByName(albums, albumSearch), [albums, albumSearch]);
+    const filteredTracks = SP_REACT.useMemo(() => filterByName(tracks, trackSearch), [tracks, trackSearch]);
     // -- Data loaders -------------------------------------------
     const loadArtists = async () => {
         setLoading(true);
@@ -515,8 +513,6 @@ function Content() {
             globalAudio.pause();
             globalAudio = null;
         }
-        setCurrentTime(0);
-        setTrackDuration(0);
         queueIndexRef.current = index;
         globalQueueIndex = index;
         globalAudio = new Audio(url);
@@ -661,9 +657,8 @@ function Content() {
         globalRepeat = next;
     };
     const handleSeek = (ratio) => {
-        if (globalAudio && trackDuration) {
-            globalAudio.currentTime = ratio * trackDuration;
-            setCurrentTime(globalAudio.currentTime);
+        if (globalAudio && isFinite(globalAudio.duration)) {
+            globalAudio.currentTime = ratio * globalAudio.duration;
         }
     };
     const handleVolumeChange = (v) => {
@@ -688,8 +683,6 @@ function Content() {
         currentTrackId,
         nowPlayingArtist,
         nowPlayingAlbum,
-        currentTime,
-        trackDuration,
         shuffle,
         repeat,
         serverUrl,

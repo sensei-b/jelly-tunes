@@ -13,7 +13,7 @@ import {
   callable,
   definePlugin,
 } from "@decky/api";
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   FaMusic,
   FaCog,
@@ -236,8 +236,6 @@ interface NowPlayingProps {
   currentTrackId: string | null;
   nowPlayingArtist: string | null;
   nowPlayingAlbum: string | null;
-  currentTime: number;
-  trackDuration: number;
   shuffle: boolean;
   repeat: RepeatMode;
   serverUrl: string;
@@ -251,9 +249,25 @@ interface NowPlayingProps {
 
 function NowPlaying({
   nowPlaying, isPlaying, currentTrackId, nowPlayingArtist, nowPlayingAlbum,
-  currentTime, trackDuration, shuffle, repeat, serverUrl, apiKey,
+  shuffle, repeat, serverUrl, apiKey,
   onTogglePause, onSkip, onToggleShuffle, onCycleRepeat, onSeek,
 }: NowPlayingProps) {
+  const [currentTime, setCurrentTime] = useState(() => globalAudio ? globalAudio.currentTime : 0);
+  const [trackDuration, setTrackDuration] = useState(() =>
+    globalAudio && isFinite(globalAudio.duration) ? globalAudio.duration : 0
+  );
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    const id = setInterval(() => {
+      if (globalAudio) {
+        setCurrentTime(globalAudio.currentTime);
+        setTrackDuration(isFinite(globalAudio.duration) ? globalAudio.duration : 0);
+      }
+    }, 500);
+    return () => clearInterval(id);
+  }, [isPlaying]);
+
   const progress = trackDuration > 0 ? currentTime / trackDuration : 0;
 
   const seekTrackRef = useRef<HTMLDivElement>(null);
@@ -507,9 +521,6 @@ function Content() {
   const [repeat, setRepeat] = useState<RepeatMode>("off");
   const [nowPlayingArtist, setNowPlayingArtist] = useState<string | null>(null);
   const [nowPlayingAlbum, setNowPlayingAlbum] = useState<string | null>(null);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [trackDuration, setTrackDuration] = useState(0);
-
   const [volume, setVolume] = useState(globalVolume);
 
   const [globalSearch, setGlobalSearch] = useState("");
@@ -545,8 +556,6 @@ function Content() {
       setShuffle(globalShuffle);
       setRepeat(globalRepeat);
       setVolume(globalVolume);
-      setCurrentTime(globalAudio.currentTime);
-      setTrackDuration(isFinite(globalAudio.duration) ? globalAudio.duration : 0);
       globalAudio.onended = () => handleTrackEnded();
       globalAudio.onerror = () => {
         setIsPlaying(false);
@@ -579,17 +588,6 @@ function Content() {
   }, []);
 
   useEffect(() => {
-    if (!isPlaying) return;
-    const id = setInterval(() => {
-      if (globalAudio) {
-        setCurrentTime(globalAudio.currentTime);
-        setTrackDuration(isFinite(globalAudio.duration) ? globalAudio.duration : 0);
-      }
-    }, 500);
-    return () => clearInterval(id);
-  }, [isPlaying]);
-
-  useEffect(() => {
     const term = globalSearch.trim();
     if (term.length < 2) {
       setSearchResults(null);
@@ -606,8 +604,8 @@ function Content() {
   }, [globalSearch]);
 
   // -- Search -----------------------------------------------------
-  const filteredAlbums = filterByName(albums, albumSearch);
-  const filteredTracks = filterByName(tracks, trackSearch);
+  const filteredAlbums = useMemo(() => filterByName(albums, albumSearch), [albums, albumSearch]);
+  const filteredTracks = useMemo(() => filterByName(tracks, trackSearch), [tracks, trackSearch]);
 
   // -- Data loaders -------------------------------------------
   const loadArtists = async () => {
@@ -681,8 +679,6 @@ function Content() {
       globalAudio = null;
     }
 
-    setCurrentTime(0);
-    setTrackDuration(0);
     queueIndexRef.current = index;
     globalQueueIndex = index;
 
@@ -836,9 +832,8 @@ function Content() {
   };
 
   const handleSeek = (ratio: number) => {
-    if (globalAudio && trackDuration) {
-      globalAudio.currentTime = ratio * trackDuration;
-      setCurrentTime(globalAudio.currentTime);
+    if (globalAudio && isFinite(globalAudio.duration)) {
+      globalAudio.currentTime = ratio * globalAudio.duration;
     }
   };
 
@@ -865,8 +860,6 @@ function Content() {
     currentTrackId,
     nowPlayingArtist,
     nowPlayingAlbum,
-    currentTime,
-    trackDuration,
     shuffle,
     repeat,
     serverUrl,
