@@ -1,4 +1,4 @@
-# <img src="assets/jellytunes.png" alt="" width="48" valign="middle"> Jelly Tunes
+# <img src="assets/jellytunes.png" alt="" width="48" style="vertical-align: middle"> Jelly Tunes
 
 I'm not a professional developer, please forgive the vibe coding mess.
 I wanted to be able to access my Jellyfin media server to play music easily
