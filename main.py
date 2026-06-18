@@ -257,38 +257,23 @@ class Plugin:
             "Limit": 300,
         }
 
-        # Try 1: AlbumArtistIds (matches ALBUMARTIST tag)
-        result = await self._get(f"/Users/{user_id}/Items", {
-            **params_base,
-            "AlbumArtistIds": artist_id,
-        })
-        if "error" not in result:
-            items = result["data"].get("Items", [])
-            decky.logger.info(f"get_albums: AlbumArtistIds → {len(items)} (total={result['data'].get('TotalRecordCount')})")
-            if items:
-                return {"items": items}
-
-        # Try 2: ArtistIds on MusicAlbum
-        result2 = await self._get(f"/Users/{user_id}/Items", {
-            **params_base,
-            "ArtistIds": artist_id,
-        })
-        if "error" not in result2:
-            items = result2["data"].get("Items", [])
-            decky.logger.info(f"get_albums: ArtistIds(album) → {len(items)} (total={result2['data'].get('TotalRecordCount')})")
-            if items:
-                return {"items": items}
-
-        # Try 3: ContributingArtistIds on MusicAlbum
-        result3 = await self._get(f"/Users/{user_id}/Items", {
-            **params_base,
-            "ContributingArtistIds": artist_id,
-        })
-        if "error" not in result3:
-            items = result3["data"].get("Items", [])
-            decky.logger.info(f"get_albums: ContributingArtistIds → {len(items)} (total={result3['data'].get('TotalRecordCount')})")
-            if items:
-                return {"items": items}
+        # Tries 1–3: all three are cheap ID-based queries against the same endpoint;
+        # run them concurrently and take the first non-empty result in priority order.
+        r1, r2, r3 = await asyncio.gather(
+            self._get(f"/Users/{user_id}/Items", {**params_base, "AlbumArtistIds": artist_id}),
+            self._get(f"/Users/{user_id}/Items", {**params_base, "ArtistIds": artist_id}),
+            self._get(f"/Users/{user_id}/Items", {**params_base, "ContributingArtistIds": artist_id}),
+        )
+        for label, r in (
+            ("AlbumArtistIds", r1),
+            ("ArtistIds(album)", r2),
+            ("ContributingArtistIds", r3),
+        ):
+            if "error" not in r:
+                items = r["data"].get("Items", [])
+                decky.logger.info(f"get_albums: {label} → {len(items)} (total={r['data'].get('TotalRecordCount')})")
+                if items:
+                    return {"items": items}
 
         # Try 4: ParentId — treats the MusicArtist item as a folder.
         # This uses Jellyfin's native library hierarchy (Artist → Album)
