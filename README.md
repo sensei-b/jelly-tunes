@@ -1,3 +1,5 @@
+<img src="assets/jellytunes.png" alt="Jelly Tunes" width="48" align="left" style="margin-right: 12px;">
+
 # Jelly Tunes
 
 I'm not a professional developer, please forgive the vibe coding mess.
