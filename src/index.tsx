@@ -4,6 +4,7 @@ import {
   Focusable,
   PanelSection,
   PanelSectionRow,
+  SliderField,
   TextField,
   ToggleField,
   staticClasses,
@@ -23,7 +24,6 @@ import {
   FaRedo,
   FaStepForward,
   FaStepBackward,
-  FaVolumeDown,
 } from "react-icons/fa";
 
 // -- Types ----------------------------------------------------------
@@ -209,87 +209,6 @@ function MarqueeText({ text }: { text: string }) {
   );
 }
 
-function VolumeBar({ volume, onChange }: { volume: number; onChange: (v: number) => void }) {
-  const trackRef = useRef<HTMLDivElement>(null);
-  const fillRef = useRef<HTMLDivElement>(null);
-  const dragging = useRef(false);
-
-  // Sync fill width from prop when not dragging (mount / external change)
-  useEffect(() => {
-    if (!dragging.current && fillRef.current) {
-      fillRef.current.style.width = `${volume * 100}%`;
-    }
-  }, [volume]);
-
-  const applyPosition = (e: React.PointerEvent<HTMLDivElement>): number => {
-    if (!trackRef.current) return 0;
-    const rect = trackRef.current.getBoundingClientRect();
-    const v = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    if (fillRef.current) fillRef.current.style.width = `${v * 100}%`;
-    return v;
-  };
-
-  return (
-    <PanelSectionRow>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
-        <FaVolumeDown style={{ opacity: 0.7, flexShrink: 0, fontSize: "1.2em" }} />
-        <div
-          style={{
-            flex: 1,
-            height: 40,
-            display: "flex",
-            alignItems: "center",
-            cursor: "pointer",
-          }}
-          onPointerDown={(e) => {
-            e.currentTarget.setPointerCapture(e.pointerId);
-            dragging.current = true;
-            onChange(applyPosition(e));
-          }}
-          onPointerMove={(e) => {
-            if (e.buttons === 0) return;
-            onChange(applyPosition(e));
-          }}
-          onPointerUp={(e) => {
-            dragging.current = false;
-            onChange(applyPosition(e));
-          }}
-        >
-          <div
-            ref={trackRef}
-            style={{
-              width: "100%",
-              background: "rgba(255,255,255,0.15)",
-              borderRadius: 4,
-              height: 6,
-              position: "relative",
-            }}
-          >
-            <div ref={fillRef} style={{
-              background: ACCENT,
-              borderRadius: 4,
-              height: "100%",
-              width: `${volume * 100}%`,
-              position: "relative",
-            }}>
-              <div style={{
-                position: "absolute",
-                right: -10,
-                top: "50%",
-                transform: "translateY(-50%)",
-                width: 20,
-                height: 20,
-                borderRadius: "50%",
-                background: "white",
-                pointerEvents: "none",
-              }} />
-            </div>
-          </div>
-        </div>
-      </div>
-    </PanelSectionRow>
-  );
-}
 
 function thumbUrl(id: string): string {
   if (!id) return "";
@@ -334,10 +253,36 @@ function NowPlaying({
 }: NowPlayingProps) {
   const progress = trackDuration > 0 ? currentTime / trackDuration : 0;
 
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const seekTrackRef = useRef<HTMLDivElement>(null);
+  const seekFillRef = useRef<HTMLDivElement>(null);
+  const seekDragging = useRef(false);
+
+  // Keep fill in sync with playback progress when not dragging
+  useEffect(() => {
+    if (!seekDragging.current && seekFillRef.current) {
+      seekFillRef.current.style.width = `${progress * 100}%`;
+    }
+  }, [progress]);
+
+  const applySeekDom = (e: React.PointerEvent<HTMLDivElement>): number => {
+    if (!seekTrackRef.current) return 0;
+    const rect = seekTrackRef.current.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    if (seekFillRef.current) seekFillRef.current.style.width = `${ratio * 100}%`;
+    return ratio;
+  };
+
+  const handleSeekKey = (e: React.KeyboardEvent) => {
     if (!trackDuration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    onSeek(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      e.stopPropagation();
+      onSeek(Math.max(0, (currentTime - 10) / trackDuration));
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      e.stopPropagation();
+      onSeek(Math.min(1, (currentTime + 10) / trackDuration));
+    }
   };
 
   return (
@@ -404,22 +349,43 @@ function NowPlaying({
       <PanelSectionRow>
         <div style={{ width: "100%", paddingBottom: 2 }}>
           <div
+            ref={seekTrackRef}
+            tabIndex={0}
             style={{
               background: "rgba(255,255,255,0.15)",
               borderRadius: 3,
-              height: 4,
+              height: 12,
               cursor: "pointer",
               position: "relative",
+              touchAction: "none",
+              outline: "none",
             }}
-            onClick={handleSeek}
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
+              seekDragging.current = true;
+              onSeek(applySeekDom(e));
+            }}
+            onPointerMove={(e) => {
+              if (!seekDragging.current) return;
+              applySeekDom(e);
+            }}
+            onPointerUp={(e) => {
+              if (!seekDragging.current) return;
+              seekDragging.current = false;
+              onSeek(applySeekDom(e));
+            }}
+            onPointerCancel={() => { seekDragging.current = false; }}
+            onKeyDown={handleSeekKey}
           >
-            <div style={{
-              background: ACCENT,
-              borderRadius: 3,
-              height: "100%",
-              width: `${progress * 100}%`,
-              transition: "width 0.3s linear",
-            }} />
+            <div
+              ref={seekFillRef}
+              style={{
+                background: ACCENT,
+                borderRadius: 3,
+                height: "100%",
+                width: `${progress * 100}%`,
+              }}
+            />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.7em", opacity: 0.6, marginTop: 2 }}>
             <span>{fmtTime(currentTime)}</span>
@@ -997,7 +963,7 @@ function Content() {
           ...(selectedArtist ? [{ label: selectedArtist.Name }] : []),
         ]}
         nowPlayingProps={nowPlayingProps}
-        volumeBar={<VolumeBar volume={volume} onChange={handleVolumeChange} />}
+        volumeBar={<SliderField label="Volume" value={Math.round(volume * 100)} min={0} max={100} step={5} onChange={(v) => handleVolumeChange(v / 100)} />}
         error={error}
         searchValue={albumSearch}
         onSearchChange={setAlbumSearch}
@@ -1045,7 +1011,7 @@ function Content() {
           ...(selectedAlbum ? [{ label: selectedAlbum.Name }] : []),
         ]}
         nowPlayingProps={nowPlayingProps}
-        volumeBar={<VolumeBar volume={volume} onChange={handleVolumeChange} />}
+        volumeBar={<SliderField label="Volume" value={Math.round(volume * 100)} min={0} max={100} step={5} onChange={(v) => handleVolumeChange(v / 100)} />}
         error={error}
         searchValue={trackSearch}
         onSearchChange={setTrackSearch}
@@ -1085,7 +1051,7 @@ function Content() {
     <PanelSection title="Jelly Tunes">
       <ErrorRow />
       {nowPlayingProps && <NowPlaying {...nowPlayingProps} />}
-      <VolumeBar volume={volume} onChange={handleVolumeChange} />
+      <SliderField label="Volume" value={Math.round(volume * 100)} min={0} max={100} step={5} onChange={(v) => handleVolumeChange(v / 100)} />
       <PanelSectionRow>
         <ButtonItem layout="below" onClick={() => setView("settings")}>
           <FaCog /> Settings

@@ -99,8 +99,6 @@ function FaArrowLeft (props) {
   return GenIcon({"attr":{"viewBox":"0 0 448 512"},"child":[{"tag":"path","attr":{"d":"M64 468V44c0-6.6 5.4-12 12-12h48c6.6 0 12 5.4 12 12v176.4l195.5-181C352.1 22.3 384 36.6 384 64v384c0 27.4-31.9 41.7-52.5 24.6L136 292.7V468c0 6.6-5.4 12-12 12H76c-6.6 0-12-5.4-12-12z"},"child":[]}]})(props);
 }function FaStepForward (props) {
   return GenIcon({"attr":{"viewBox":"0 0 448 512"},"child":[{"tag":"path","attr":{"d":"M384 44v424c0 6.6-5.4 12-12 12h-48c-6.6 0-12-5.4-12-12V291.6l-195.5 181C95.9 489.7 64 475.4 64 448V64c0-27.4 31.9-41.7 52.5-24.6L312 219.3V44c0-6.6 5.4-12 12-12h48c6.6 0 12 5.4 12 12z"},"child":[]}]})(props);
-}function FaVolumeDown (props) {
-  return GenIcon({"attr":{"viewBox":"0 0 384 512"},"child":[{"tag":"path","attr":{"d":"M215.03 72.04L126.06 161H24c-13.26 0-24 10.74-24 24v144c0 13.25 10.74 24 24 24h102.06l88.97 88.95c15.03 15.03 40.97 4.47 40.97-16.97V89.02c0-21.47-25.96-31.98-40.97-16.98zm123.2 108.08c-11.58-6.33-26.19-2.16-32.61 9.45-6.39 11.61-2.16 26.2 9.45 32.61C327.98 229.28 336 242.62 336 257c0 14.38-8.02 27.72-20.92 34.81-11.61 6.41-15.84 21-9.45 32.61 6.43 11.66 21.05 15.8 32.61 9.45 28.23-15.55 45.77-45 45.77-76.88s-17.54-61.32-45.78-76.87z"},"child":[]}]})(props);
 }
 
 // -- Backend calls ----------------------------------------------------
@@ -231,66 +229,6 @@ function MarqueeText({ text }) {
     }, []);
     return (SP_JSX.jsx("div", { ref: outerRef, style: { overflow: "hidden", width: "100%" }, children: SP_JSX.jsx("span", { ref: innerRef, style: { display: "inline-block", whiteSpace: "nowrap" }, children: text }) }));
 }
-function VolumeBar({ volume, onChange }) {
-    const trackRef = SP_REACT.useRef(null);
-    const fillRef = SP_REACT.useRef(null);
-    const dragging = SP_REACT.useRef(false);
-    // Sync fill width from prop when not dragging (mount / external change)
-    SP_REACT.useEffect(() => {
-        if (!dragging.current && fillRef.current) {
-            fillRef.current.style.width = `${volume * 100}%`;
-        }
-    }, [volume]);
-    const applyPosition = (e) => {
-        if (!trackRef.current)
-            return 0;
-        const rect = trackRef.current.getBoundingClientRect();
-        const v = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-        if (fillRef.current)
-            fillRef.current.style.width = `${v * 100}%`;
-        return v;
-    };
-    return (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, width: "100%" }, children: [SP_JSX.jsx(FaVolumeDown, { style: { opacity: 0.7, flexShrink: 0, fontSize: "1.2em" } }), SP_JSX.jsx("div", { style: {
-                        flex: 1,
-                        height: 40,
-                        display: "flex",
-                        alignItems: "center",
-                        cursor: "pointer",
-                    }, onPointerDown: (e) => {
-                        e.currentTarget.setPointerCapture(e.pointerId);
-                        dragging.current = true;
-                        onChange(applyPosition(e));
-                    }, onPointerMove: (e) => {
-                        if (e.buttons === 0)
-                            return;
-                        onChange(applyPosition(e));
-                    }, onPointerUp: (e) => {
-                        dragging.current = false;
-                        onChange(applyPosition(e));
-                    }, children: SP_JSX.jsx("div", { ref: trackRef, style: {
-                            width: "100%",
-                            background: "rgba(255,255,255,0.15)",
-                            borderRadius: 4,
-                            height: 6,
-                            position: "relative",
-                        }, children: SP_JSX.jsx("div", { ref: fillRef, style: {
-                                background: ACCENT,
-                                borderRadius: 4,
-                                height: "100%",
-                                width: `${volume * 100}%`,
-                                position: "relative",
-                            }, children: SP_JSX.jsx("div", { style: {
-                                    position: "absolute",
-                                    right: -10,
-                                    top: "50%",
-                                    transform: "translateY(-50%)",
-                                    width: 20,
-                                    height: 20,
-                                    borderRadius: "50%",
-                                    background: "white",
-                                    pointerEvents: "none",
-                                } }) }) }) })] }) }));
-}
 function thumbUrl(id) {
     if (!id)
         return "";
@@ -305,11 +243,37 @@ function fmtTime(s) {
 }
 function NowPlaying({ nowPlaying, isPlaying, currentTrackId, nowPlayingArtist, nowPlayingAlbum, currentTime, trackDuration, shuffle, repeat, serverUrl, apiKey, onTogglePause, onSkip, onToggleShuffle, onCycleRepeat, onSeek, }) {
     const progress = trackDuration > 0 ? currentTime / trackDuration : 0;
-    const handleSeek = (e) => {
+    const seekTrackRef = SP_REACT.useRef(null);
+    const seekFillRef = SP_REACT.useRef(null);
+    const seekDragging = SP_REACT.useRef(false);
+    // Keep fill in sync with playback progress when not dragging
+    SP_REACT.useEffect(() => {
+        if (!seekDragging.current && seekFillRef.current) {
+            seekFillRef.current.style.width = `${progress * 100}%`;
+        }
+    }, [progress]);
+    const applySeekDom = (e) => {
+        if (!seekTrackRef.current)
+            return 0;
+        const rect = seekTrackRef.current.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        if (seekFillRef.current)
+            seekFillRef.current.style.width = `${ratio * 100}%`;
+        return ratio;
+    };
+    const handleSeekKey = (e) => {
         if (!trackDuration)
             return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        onSeek(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
+        if (e.key === "ArrowLeft") {
+            e.preventDefault();
+            e.stopPropagation();
+            onSeek(Math.max(0, (currentTime - 10) / trackDuration));
+        }
+        else if (e.key === "ArrowRight") {
+            e.preventDefault();
+            e.stopPropagation();
+            onSeek(Math.min(1, (currentTime + 10) / trackDuration));
+        }
     };
     return (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.Focusable
                 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -327,18 +291,32 @@ function NowPlaying({ nowPlaying, isPlaying, currentTrackId, nowPlayingArtist, n
                                         overflow: "hidden",
                                         textOverflow: "ellipsis",
                                         whiteSpace: "nowrap",
-                                    }, children: [nowPlayingArtist, nowPlayingAlbum].filter(Boolean).join(" • ") }))] })] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { width: "100%", paddingBottom: 2 }, children: [SP_JSX.jsx("div", { style: {
+                                    }, children: [nowPlayingArtist, nowPlayingAlbum].filter(Boolean).join(" • ") }))] })] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs("div", { style: { width: "100%", paddingBottom: 2 }, children: [SP_JSX.jsx("div", { ref: seekTrackRef, tabIndex: 0, style: {
                                 background: "rgba(255,255,255,0.15)",
                                 borderRadius: 3,
-                                height: 4,
+                                height: 12,
                                 cursor: "pointer",
                                 position: "relative",
-                            }, onClick: handleSeek, children: SP_JSX.jsx("div", { style: {
+                                touchAction: "none",
+                                outline: "none",
+                            }, onPointerDown: (e) => {
+                                e.currentTarget.setPointerCapture(e.pointerId);
+                                seekDragging.current = true;
+                                onSeek(applySeekDom(e));
+                            }, onPointerMove: (e) => {
+                                if (!seekDragging.current)
+                                    return;
+                                applySeekDom(e);
+                            }, onPointerUp: (e) => {
+                                if (!seekDragging.current)
+                                    return;
+                                seekDragging.current = false;
+                                onSeek(applySeekDom(e));
+                            }, onPointerCancel: () => { seekDragging.current = false; }, onKeyDown: handleSeekKey, children: SP_JSX.jsx("div", { ref: seekFillRef, style: {
                                     background: ACCENT,
                                     borderRadius: 3,
                                     height: "100%",
                                     width: `${progress * 100}%`,
-                                    transition: "width 0.3s linear",
                                 } }) }), SP_JSX.jsxs("div", { style: { display: "flex", justifyContent: "space-between", fontSize: "0.7em", opacity: 0.6, marginTop: 2 }, children: [SP_JSX.jsx("span", { children: fmtTime(currentTime) }), SP_JSX.jsx("span", { children: fmtTime(trackDuration) })] })] }) })] }));
 }
 function Breadcrumb({ segments }) {
@@ -732,7 +710,7 @@ function Content() {
         return (SP_JSX.jsx(BrowseList, { title: selectedArtist?.Name ?? "Albums", breadcrumbs: [
                 { label: "Artists", onClick: () => setView("artists") },
                 ...(selectedArtist ? [{ label: selectedArtist.Name }] : []),
-            ], nowPlayingProps: nowPlayingProps, volumeBar: SP_JSX.jsx(VolumeBar, { volume: volume, onChange: handleVolumeChange }), error: error, searchValue: albumSearch, onSearchChange: setAlbumSearch, searchLabel: "Search albums", items: albums, filteredItems: filteredAlbums, emptyLabel: "No albums found for this artist.", noMatchLabel: `No albums match "${albumSearch}".`, renderItem: (album) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.Focusable
+            ], nowPlayingProps: nowPlayingProps, volumeBar: SP_JSX.jsx(DFL.SliderField, { label: "Volume", value: Math.round(volume * 100), min: 0, max: 100, step: 5, onChange: (v) => handleVolumeChange(v / 100) }), error: error, searchValue: albumSearch, onSearchChange: setAlbumSearch, searchLabel: "Search albums", items: albums, filteredItems: filteredAlbums, emptyLabel: "No albums found for this artist.", noMatchLabel: `No albums match "${albumSearch}".`, renderItem: (album) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.Focusable
                 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                 // @ts-ignore
                 , { "flow-children": "row", style: { display: "flex", gap: 4, width: "100%", alignItems: "center" }, children: [SP_JSX.jsx(Thumb, { src: thumbUrl(album.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), SP_JSX.jsx(DFL.DialogButton, { style: { flex: 1, minWidth: 0, overflow: "hidden" }, onClick: () => openTracks(album), children: SP_JSX.jsx(MarqueeText, { text: album.Name + (album.ProductionYear ? ` (${album.ProductionYear})` : "") }) }), SP_JSX.jsx(DFL.DialogButton, { style: { width: 40, flexShrink: 0, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 0" }, onClick: () => playAlbum(album), children: SP_JSX.jsx(FaPlay, {}) })] }) }, album.Id)) }));
@@ -743,11 +721,11 @@ function Content() {
                 { label: "Artists", onClick: () => setView("artists") },
                 ...(selectedArtist ? [{ label: selectedArtist.Name, onClick: () => setView("albums") }] : []),
                 ...(selectedAlbum ? [{ label: selectedAlbum.Name }] : []),
-            ], nowPlayingProps: nowPlayingProps, volumeBar: SP_JSX.jsx(VolumeBar, { volume: volume, onChange: handleVolumeChange }), error: error, searchValue: trackSearch, onSearchChange: setTrackSearch, searchLabel: "Search tracks", items: tracks, filteredItems: filteredTracks, emptyLabel: "No tracks found on this album.", noMatchLabel: `No tracks match "${trackSearch}".`, renderItem: (track) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", icon: SP_JSX.jsx(Thumb, { src: thumbUrl(track.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), onClick: () => playTrack(track), children: SP_JSX.jsxs("span", { style: { color: track.Id === currentTrackId ? ACCENT : undefined }, children: [track.IndexNumber ? `${track.IndexNumber}. ` : "", track.Name] }) }) }, track.Id)) }));
+            ], nowPlayingProps: nowPlayingProps, volumeBar: SP_JSX.jsx(DFL.SliderField, { label: "Volume", value: Math.round(volume * 100), min: 0, max: 100, step: 5, onChange: (v) => handleVolumeChange(v / 100) }), error: error, searchValue: trackSearch, onSearchChange: setTrackSearch, searchLabel: "Search tracks", items: tracks, filteredItems: filteredTracks, emptyLabel: "No tracks found on this album.", noMatchLabel: `No tracks match "${trackSearch}".`, renderItem: (track) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", icon: SP_JSX.jsx(Thumb, { src: thumbUrl(track.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), onClick: () => playTrack(track), children: SP_JSX.jsxs("span", { style: { color: track.Id === currentTrackId ? ACCENT : undefined }, children: [track.IndexNumber ? `${track.IndexNumber}. ` : "", track.Name] }) }) }, track.Id)) }));
     }
     const SearchSectionLabel = ({ label }) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { fontSize: "0.75em", opacity: 0.5, textTransform: "uppercase", letterSpacing: "0.05em" }, children: label }) }));
     // -- Artists view (default) -------------------------------------------
-    return (SP_JSX.jsxs(DFL.PanelSection, { title: "Jelly Tunes", children: [SP_JSX.jsx(ErrorRow, {}), nowPlayingProps && SP_JSX.jsx(NowPlaying, { ...nowPlayingProps }), SP_JSX.jsx(VolumeBar, { volume: volume, onChange: handleVolumeChange }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.ButtonItem, { layout: "below", onClick: () => setView("settings"), children: [SP_JSX.jsx(FaCog, {}), " Settings"] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: "Search artists, albums & songs", value: globalSearch, onChange: (e) => setGlobalSearch(e.target.value), bShowClearAction: true, bAlwaysShowClearAction: globalSearch.length > 0 }) }), globalSearch.trim().length >= 2 ? (SP_JSX.jsxs(SP_JSX.Fragment, { children: [searchLoading && SP_JSX.jsx(DFL.PanelSectionRow, { children: "Searching..." }), !searchLoading && searchResults && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [searchResults.artists.length > 0 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(SearchSectionLabel, { label: "Artists" }), searchResults.artists.map((artist) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.Focusable
+    return (SP_JSX.jsxs(DFL.PanelSection, { title: "Jelly Tunes", children: [SP_JSX.jsx(ErrorRow, {}), nowPlayingProps && SP_JSX.jsx(NowPlaying, { ...nowPlayingProps }), SP_JSX.jsx(DFL.SliderField, { label: "Volume", value: Math.round(volume * 100), min: 0, max: 100, step: 5, onChange: (v) => handleVolumeChange(v / 100) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.ButtonItem, { layout: "below", onClick: () => setView("settings"), children: [SP_JSX.jsx(FaCog, {}), " Settings"] }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: "Search artists, albums & songs", value: globalSearch, onChange: (e) => setGlobalSearch(e.target.value), bShowClearAction: true, bAlwaysShowClearAction: globalSearch.length > 0 }) }), globalSearch.trim().length >= 2 ? (SP_JSX.jsxs(SP_JSX.Fragment, { children: [searchLoading && SP_JSX.jsx(DFL.PanelSectionRow, { children: "Searching..." }), !searchLoading && searchResults && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [searchResults.artists.length > 0 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(SearchSectionLabel, { label: "Artists" }), searchResults.artists.map((artist) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.Focusable
                                         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                                         // @ts-ignore
                                         , { "flow-children": "row", style: { display: "flex", gap: 4, width: "100%", alignItems: "center" }, children: [SP_JSX.jsx(Thumb, { src: thumbUrl(artist.Id), fallback: SP_JSX.jsx(FaMusic, {}) }), SP_JSX.jsx(DFL.DialogButton, { style: { flex: 1, minWidth: 0, overflow: "hidden" }, onClick: () => openAlbums(artist), children: SP_JSX.jsx(MarqueeText, { text: artist.Name }) })] }) }, artist.Id)))] })), searchResults.albums.length > 0 && (SP_JSX.jsxs(SP_JSX.Fragment, { children: [SP_JSX.jsx(SearchSectionLabel, { label: "Albums" }), searchResults.albums.map((album) => (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsxs(DFL.Focusable
