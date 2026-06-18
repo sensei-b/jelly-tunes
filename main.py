@@ -55,6 +55,16 @@ class Plugin:
     # Resolved base URL for this session; None means not yet determined.
     _url_cache: str | None = None
 
+    # Shared HTTP session — avoids a new TCP+TLS handshake per request.
+    _session: aiohttp.ClientSession | None = None
+
+    async def _get_session(self, ssl_ctx) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(
+                connector=aiohttp.TCPConnector(ssl=ssl_ctx, limit=10),
+            )
+        return self._session
+
     async def _discover_local_server(self) -> str | None:
         """UDP broadcast on port 7359 to find a Jellyfin server on the LAN."""
         import socket
@@ -153,6 +163,9 @@ class Plugin:
 
     async def save_settings(self, server_url: str, api_key: str, user_id: str, local_url: str = "", skip_ssl_verify: bool = False) -> bool:
         self._url_cache = None
+        if self._session is not None and not self._session.closed:
+            await self._session.close()
+        self._session = None
         _save_settings({
             "server_url": _normalize_server_url(server_url),
             "local_url": _normalize_server_url(local_url),
@@ -176,9 +189,8 @@ class Plugin:
         url = f"{base}{path}"
         try:
             timeout = aiohttp.ClientTimeout(total=10)
-            connector = aiohttp.TCPConnector(ssl=ssl_ctx)
-            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-                async with session.get(url, params=params, headers=headers) as resp:
+            session = await self._get_session(ssl_ctx)
+            async with session.get(url, params=params, headers=headers, timeout=timeout) as resp:
                     if resp.status == 404:
                         # Jellyfin sometimes throws a generic 404
                         # ("Error processing request.") for certain item
@@ -494,9 +506,8 @@ class Plugin:
 
             try:
                 ssl_ctx = False if cfg.get("skip_ssl_verify") else SSL_CONTEXT
-                connector = aiohttp.TCPConnector(ssl=ssl_ctx)
-                async with aiohttp.ClientSession(connector=connector) as session:
-                    async with session.get(upstream, headers=req_headers) as resp:
+                session = await self._get_session(ssl_ctx)
+                async with session.get(upstream, headers=req_headers) as resp:
                         fwd = {
                             "Access-Control-Allow-Origin": "*",
                             "Content-Type": resp.headers.get("Content-Type", "audio/mpeg"),
@@ -528,9 +539,8 @@ class Plugin:
 
             try:
                 ssl_ctx = False if cfg.get("skip_ssl_verify") else SSL_CONTEXT
-                connector = aiohttp.TCPConnector(ssl=ssl_ctx)
-                async with aiohttp.ClientSession(connector=connector) as session:
-                    async with session.get(upstream) as resp:
+                session = await self._get_session(ssl_ctx)
+                async with session.get(upstream) as resp:
                         data = await resp.read()
                         return web.Response(
                             body=data,
@@ -562,6 +572,8 @@ class Plugin:
         if self._proxy_runner is not None:
             await self._proxy_runner.cleanup()
             decky.logger.info("Audio proxy stopped")
+        if self._session is not None and not self._session.closed:
+            await self._session.close()
         decky.logger.info("Jelly Tunes unloaded")
 
     async def _uninstall(self):

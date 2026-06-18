@@ -153,14 +153,15 @@ function Thumb({ src, fallback }: { src: string; fallback: ReactNode }) {
 function MarqueeText({ text }: { text: string }) {
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLSpanElement>(null);
-  // scrollRef holds measured overflow — updated by the layout effect, read by the rAF loop
   const scrollRef = useRef(0);
+  const [overflows, setOverflows] = useState(false);
 
-  // Measure overflow whenever text or layout changes
   useEffect(() => {
     const measure = () => {
       if (!outerRef.current || !innerRef.current) return;
-      scrollRef.current = Math.max(0, innerRef.current.scrollWidth - outerRef.current.clientWidth);
+      const px = Math.max(0, innerRef.current.scrollWidth - outerRef.current.clientWidth);
+      scrollRef.current = px;
+      setOverflows(px > 0);
     };
     measure();
     const t1 = setTimeout(measure, 100);
@@ -175,10 +176,11 @@ function MarqueeText({ text }: { text: string }) {
     };
   }, [text]);
 
-  // Drive the marquee animation via rAF — no CSS custom properties or @keyframes
+  // Only run the rAF loop when there is actual overflow to animate
   useEffect(() => {
-    const PAUSE = 1500;  // ms paused at each end
-    const SCROLL = 4000; // ms to traverse full overflow
+    if (!overflows) return;
+    const PAUSE = 1500;
+    const SCROLL = 4000;
     const CYCLE = (PAUSE + SCROLL) * 2;
     let start: number | null = null;
     let raf: number;
@@ -193,14 +195,15 @@ function MarqueeText({ text }: { text: string }) {
         else if (t < PAUSE * 2 + SCROLL)     x = -overflow;
         else                                  x = -overflow * (1 - (t - PAUSE * 2 - SCROLL) / SCROLL);
         innerRef.current.style.transform = `translateX(${x}px)`;
-      } else if (innerRef.current) {
-        innerRef.current.style.transform = "";
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, []);
+    return () => {
+      cancelAnimationFrame(raf);
+      if (innerRef.current) innerRef.current.style.transform = "";
+    };
+  }, [overflows]);
 
   return (
     <div ref={outerRef} style={{ overflow: "hidden", width: "100%" }}>

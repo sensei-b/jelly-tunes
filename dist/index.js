@@ -172,14 +172,15 @@ function Thumb({ src, fallback }) {
 function MarqueeText({ text }) {
     const outerRef = SP_REACT.useRef(null);
     const innerRef = SP_REACT.useRef(null);
-    // scrollRef holds measured overflow — updated by the layout effect, read by the rAF loop
     const scrollRef = SP_REACT.useRef(0);
-    // Measure overflow whenever text or layout changes
+    const [overflows, setOverflows] = SP_REACT.useState(false);
     SP_REACT.useEffect(() => {
         const measure = () => {
             if (!outerRef.current || !innerRef.current)
                 return;
-            scrollRef.current = Math.max(0, innerRef.current.scrollWidth - outerRef.current.clientWidth);
+            const px = Math.max(0, innerRef.current.scrollWidth - outerRef.current.clientWidth);
+            scrollRef.current = px;
+            setOverflows(px > 0);
         };
         measure();
         const t1 = setTimeout(measure, 100);
@@ -195,10 +196,12 @@ function MarqueeText({ text }) {
             ro.disconnect();
         };
     }, [text]);
-    // Drive the marquee animation via rAF — no CSS custom properties or @keyframes
+    // Only run the rAF loop when there is actual overflow to animate
     SP_REACT.useEffect(() => {
-        const PAUSE = 1500; // ms paused at each end
-        const SCROLL = 4000; // ms to traverse full overflow
+        if (!overflows)
+            return;
+        const PAUSE = 1500;
+        const SCROLL = 4000;
         const CYCLE = (PAUSE + SCROLL) * 2;
         let start = null;
         let raf;
@@ -219,14 +222,15 @@ function MarqueeText({ text }) {
                     x = -overflow * (1 - (t - PAUSE * 2 - SCROLL) / SCROLL);
                 innerRef.current.style.transform = `translateX(${x}px)`;
             }
-            else if (innerRef.current) {
-                innerRef.current.style.transform = "";
-            }
             raf = requestAnimationFrame(tick);
         };
         raf = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(raf);
-    }, []);
+        return () => {
+            cancelAnimationFrame(raf);
+            if (innerRef.current)
+                innerRef.current.style.transform = "";
+        };
+    }, [overflows]);
     return (SP_JSX.jsx("div", { ref: outerRef, style: { overflow: "hidden", width: "100%" }, children: SP_JSX.jsx("span", { ref: innerRef, style: { display: "inline-block", whiteSpace: "nowrap" }, children: text }) }));
 }
 function thumbUrl(id) {
