@@ -2,6 +2,9 @@ import os
 import sys
 import json
 import ssl
+import socket
+import hashlib
+from urllib.parse import quote
 import asyncio
 import aiohttp
 import decky
@@ -16,6 +19,8 @@ import certifi
 # Let's Encrypt certs. certifi ships its own up-to-date CA bundle, so
 # we build an explicit SSL context from that and use it for every request.
 SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+
+PLUGIN_VERSION = "2.0.3"
 
 SETTINGS_FILE = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
 
@@ -57,6 +62,23 @@ def _save_settings(data):
     os.makedirs(decky.DECKY_PLUGIN_SETTINGS_DIR, exist_ok=True)
     with open(SETTINGS_FILE, "w") as f:
         json.dump(data, f)
+
+
+def _auth_headers(cfg: dict) -> dict:
+    """Authorization header required by Jellyfin 12+ (legacy X-Emby-Token
+    and ?api_key= auth were removed). DeviceId is stable so Jellyfin keeps
+    a single session per Deck rather than one per launch."""
+    host = socket.gethostname()
+    device_id = hashlib.sha256(f"{host}:{cfg['user_id']}".encode()).hexdigest()[:32]
+    fields = {
+        "Client": "Jelly Tunes",
+        "Device": host,
+        "DeviceId": device_id,
+        "Version": PLUGIN_VERSION,
+        "Token": cfg["api_key"],
+    }
+    value = ", ".join(f'{k}="{quote(v, safe="")}"' for k, v in fields.items())
+    return {"Authorization": f"MediaBrowser {value}"}
 
 
 class Plugin:
@@ -194,7 +216,7 @@ class Plugin:
             return {"error": "not_configured"}
 
         params = dict(extra_params) if extra_params else {}
-        headers = {"X-Emby-Token": cfg["api_key"]}
+        headers = _auth_headers(cfg)
 
         ssl_ctx = False if cfg.get("skip_ssl_verify") else SSL_CONTEXT
         base = await self._resolve_url(cfg)
@@ -465,11 +487,11 @@ class Plugin:
             # serves the original file directly and is supported universally.
             upstream = (
                 f"{base}/Audio/{item_id}/stream"
-                f"?api_key={cfg['api_key']}"
-                f"&Static=true"
+                f"?Static=true"
             )
 
             req_headers = {
+                **_auth_headers(cfg),
                 # Cloudflare (if present in front of Jellyfin) blocks requests
                 # without a browser-like User-Agent on the audio stream path.
                 "User-Agent": (
@@ -520,15 +542,19 @@ class Plugin:
             base = await self._resolve_url(cfg)
             upstream = (
                 f"{base}/Items/{item_id}/Images/Primary"
-                f"?fillWidth=64&fillHeight=64&quality=80&api_key={cfg['api_key']}"
+                f"?fillWidth=64&fillHeight=64&quality=80"
             )
 
             try:
                 ssl_ctx = False if cfg.get("skip_ssl_verify") else SSL_CONTEXT
                 session = await self._get_session(ssl_ctx)
-                async with session.get(upstream) as resp:
+                async with session.get(upstream, headers=_auth_headers(cfg)) as resp:
                     data = await resp.read()
                     ct = resp.headers.get("Content-Type", "image/jpeg")
+                    if resp.status != 200:
+                        # Don't cache error bodies as album art.
+                        decky.logger.warning(f"Image proxy: {item_id} returned {resp.status}")
+                        return web.Response(status=resp.status, body=data, content_type=ct)
                     if len(self._image_cache) >= 512:
                         self._image_cache.clear()
                     self._image_cache[item_id] = (data, ct)
