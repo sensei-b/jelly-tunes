@@ -1,6 +1,6 @@
 {
   "name": "jelly-tunes",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Browse and play your Jellyfin music library from the Steam Deck Quick Access Menu.",
   "type": "module",
   "scripts": {
